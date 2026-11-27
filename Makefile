@@ -20,7 +20,7 @@ test:              ## Unit test + vet
 test-integration:  ## Test race condition ke Postgres & Redis (jalankan `make up` dulu)
 	cd impl/go && go test -count=1 -tags integration ./internal/integration_test/ -v
 
-smoke:             ## Uji kontrak untuk semua strategi
+smoke:             ## Contract test untuk semua strategi
 	@for s in naive forupdate redis queue; do \
 		echo "== $$s"; \
 		docker compose --profile bench run --rm -e STRATEGY=$$s k6 run --quiet /bench/k6/smoke.js || exit 1; \
@@ -29,10 +29,10 @@ smoke:             ## Uji kontrak untuk semua strategi
 bench:             ## Satu run: make bench STRATEGY=queue BUYERS=10000 STOCK=1000
 	./bench/run.sh $(STRATEGY) $(BUYERS) $(STOCK)
 
-compare:           ## Bandingkan keempat strategi dengan beban yang sama
+compare:           ## Bandingkan keempat strategi dengan load yang sama
 	./bench/compare.sh $(BUYERS) $(STOCK)
 
-series:            ## 5 putaran keempat strategi + tabel median: make series LABEL=baseline
+series:            ## 5 run per strategi + tabel median: make series LABEL=baseline
 	./bench/series.sh $(LABEL) 5 $(BUYERS) $(STOCK)
 
 chaos-on:          ## Bikin Postgres lambat (+40ms ±10ms) lewat Toxiproxy

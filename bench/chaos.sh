@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Bikin koneksi app ke Postgres sengaja lambat lewat Toxiproxy.
-#
-#   ./bench/chaos.sh on [latency_ms=40] [jitter_ms=10]   # pasang toxic atau ganti nilainya
-#   ./bench/chaos.sh off                                 # lepas toxic
-#   ./bench/chaos.sh status                              # lihat toxic yang aktif
-#
-# Env opsional: TOXIPROXY_URL (default http://localhost:8474)
+: <<'CATATAN'
+Bikin koneksi app ke Postgres sengaja lambat lewat Toxiproxy.
+
+  ./bench/chaos.sh on [latency_ms=40] [jitter_ms=10]   # pasang toxic atau ganti nilainya
+  ./bench/chaos.sh off                                 # lepas toxic
+  ./bench/chaos.sh status                              # lihat toxic yang aktif
+
+Env opsional: TOXIPROXY_URL (default http://localhost:8474)
+CATATAN
 set -euo pipefail
 
 TOXIPROXY_URL="${TOXIPROXY_URL:-http://localhost:8474}"
@@ -28,8 +30,10 @@ check_proxy() {
     || die "proxy '${PROXY}' tidak ada di ${TOXIPROXY_URL}. Pastikan Toxiproxy sudah jalan."
 }
 
-# Hapus toxic. Return 0 kalau berhasil dihapus, 1 kalau memang belum ada (404).
-# Status HTTP lain langsung dianggap error.
+: <<'CATATAN'
+Hapus toxic. Return 0 kalau berhasil dihapus, 1 kalau memang belum ada (404).
+Status HTTP lain langsung dianggap error.
+CATATAN
 remove_toxic() {
   local code
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 -X DELETE "${BASE}/toxics/${TOXIC}") || code="000"

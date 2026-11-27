@@ -105,8 +105,10 @@ func connectPostgres(ctx context.Context, cfg config.Config) (*pgxpool.Pool, err
 	return pool, nil
 }
 
-// retry menunggu Postgres atau Redis siap. Waktu container baru naik biasanya
-// butuh beberapa detik, jadi dicoba ulang sampai sekitar 30 detik.
+/*
+retry menunggu Postgres atau Redis siap. Waktu container baru naik biasanya
+butuh beberapa detik, jadi dicoba ulang sampai sekitar 30 detik.
+*/
 func retry(ctx context.Context, f func() error) error {
 	var err error
 	for i := 0; i < 30; i++ {

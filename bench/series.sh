@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Jalankan keempat strategi beberapa putaran, lalu hitung mediannya.
-#
-# Cara pakai:
-#   ./bench/series.sh <label> [putaran=5] [pembeli=5000] [stok=500]
-#   ./bench/series.sh baseline
-#   ./bench/chaos.sh on 40 10 && ./bench/series.sh db-lambat; ./bench/chaos.sh off
-#
-# Strateginya dijalankan selang-seling per putaran (naive, forupdate, redis,
-# queue, lalu ulang), bukan lima kali naive dulu baru pindah. Dengan begitu
-# kalau laptop makin panas atau ada proses lain yang ikut jalan, dampaknya
-# kebagian rata ke semua strategi.
-#
-# Hasilnya ada di results/series-<waktu>-<label>/, satu folder per run,
-# plus summary.md berisi median dan rentangnya.
+: <<'CATATAN'
+Jalankan keempat strategi beberapa run, lalu hitung mediannya.
+
+Cara pakai:
+  ./bench/series.sh <label> [runs=5] [buyers=5000] [stock=500]
+  ./bench/series.sh baseline
+  ./bench/chaos.sh on 40 10 && ./bench/series.sh db-lambat; ./bench/chaos.sh off
+
+Strateginya dijalankan interleaved per run (naive, forupdate, redis,
+queue, lalu ulang), bukan lima kali naive dulu baru pindah. Dengan begitu
+kalau laptop makin panas atau ada proses lain yang ikut jalan, dampaknya
+kebagian rata ke semua strategi.
+
+Hasilnya ada di results/series-<waktu>-<label>/, satu folder per run,
+plus summary.md berisi median dan range-nya.
+CATATAN
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -26,14 +28,14 @@ COOLDOWN="${COOLDOWN:-5}"
 BATCH="series-$(date +%Y%m%d-%H%M%S)-${LABEL}"
 mkdir -p "results/${BATCH}"
 
-echo "Pemanasan dulu, hasilnya tidak dihitung."
+echo "Warm-up dulu, hasilnya tidak dihitung."
 RUN_DIR="${BATCH}/_warmup" ./bench/run.sh redis 1000 100 >/dev/null || true
 rm -rf "results/${BATCH}/_warmup"
 
 failed=""
 for r in $(seq 1 "$ROUNDS"); do
   for s in $STRATEGIES; do
-    echo "Putaran ${r}/${ROUNDS}, ${s}"
+    echo "Run ${r}/${ROUNDS}, ${s}"
     if ! RUN_DIR="${BATCH}/r${r}-${s}" ./bench/run.sh "$s" "$BUYERS" "$STOCK" | grep -E '^\[' ; then
       failed="${failed} r${r}-${s}"
     fi

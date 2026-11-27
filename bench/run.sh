@@ -1,17 +1,19 @@
 #!/usr/bin/env bash
-# Menjalankan satu benchmark flash sale untuk satu strategi.
-#
-#   ./bench/run.sh <naive|forupdate|redis|queue> [buyers=5000] [stock=500]
-#
-# Env opsional:
-#   APP_PORT       port app di host (default 8088)
-#   EVENT_ID       (default 1)
-#   VUS            jumlah VU k6 yang jalan paralel (default 1000)
-#   ADMIN_TOKEN    isi kalau server mewajibkan header X-Admin-Token
-#   TOXIPROXY_URL  (default http://localhost:8474)
-#   RUN_DIR        nama folder hasil, biasanya diisi compare.sh
-#
-# Hasilnya ada di results/<RUN_DIR>/{meta,report,k6-summary}.json
+: <<'CATATAN'
+Menjalankan satu benchmark flash sale untuk satu strategi.
+
+  ./bench/run.sh <naive|forupdate|redis|queue> [buyers=5000] [stock=500]
+
+Env opsional:
+  APP_PORT       port app di host (default 8088)
+  EVENT_ID       (default 1)
+  VUS            jumlah VU k6 yang jalan paralel (default 1000)
+  ADMIN_TOKEN    isi kalau server mewajibkan header X-Admin-Token
+  TOXIPROXY_URL  (default http://localhost:8474)
+  RUN_DIR        nama folder hasil, biasanya diisi compare.sh
+
+Hasilnya ada di results/<RUN_DIR>/{meta,report,k6-summary}.json
+CATATAN
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
@@ -44,8 +46,10 @@ TOXIPROXY_URL="${TOXIPROXY_URL:-http://localhost:8474}"
 RUN_DIR="${RUN_DIR:-$(date +%Y%m%d-%H%M%S)-${IMPL}-${STRATEGY}}"
 OUT="results/${RUN_DIR}"
 
-# Header admin opsional. Ekspansi ${ADMIN_HDR[@]+...} di admin_curl dipakai
-# supaya array kosong tidak bikin error di bash 3.2 dengan set -u.
+: <<'CATATAN'
+Header admin opsional. Ekspansi ${ADMIN_HDR[@]+...} di admin_curl dipakai
+supaya array kosong tidak bikin error di bash 3.2 dengan set -u.
+CATATAN
 ADMIN_HDR=()
 if [ -n "${ADMIN_TOKEN:-}" ]; then ADMIN_HDR=(-H "X-Admin-Token: ${ADMIN_TOKEN}"); fi
 admin_curl() { curl ${ADMIN_HDR[@]+"${ADMIN_HDR[@]}"} "$@"; }
@@ -57,8 +61,10 @@ fi
 
 [ -e "$OUT" ] && die "folder ${OUT} sudah ada. Hasil lama tidak akan ditimpa."
 mkdir -p "$OUT"
-# Container k6 jalan sebagai user non-root. Di Linux, folder ini perlu dibuka
-# aksesnya supaya k6 bisa menulis ringkasan.
+: <<'CATATAN'
+Container k6 jalan sebagai user non-root. Di Linux, folder ini perlu dibuka
+aksesnya supaya k6 bisa menulis summary.
+CATATAN
 chmod a+rwx "$OUT"
 
 # 2. Reset stok dan pilih strategi ------------------------------------------
@@ -82,7 +88,7 @@ docker compose --profile bench run --rm \
   k6 run /bench/k6/spike.js || k6_status=$?
 [ "$k6_status" -eq 0 ] || echo "PERINGATAN: k6 selesai dengan exit code ${k6_status}. Report tetap diambil." >&2
 
-# 4. Tunggu pesanan dari Redis masuk semua ke Postgres, lalu simpan report ----
+# 4. Tunggu persist lag Redis ke Postgres jadi nol, lalu simpan report ----
 info "Menunggu persist_lag jadi 0, paling lama 30 detik..."
 report=""
 lag="?"
@@ -146,13 +152,13 @@ jq -n \
     timestamp: $timestamp
   }' >"${OUT}/meta.json"
 
-# 6. Ringkasan ----------------------------------------------------------------
+# 6. Summary -------------------------------------------------------------------
 summary="${OUT}/k6-summary.json"
 k6json='{}'
 if [ -f "$summary" ]; then
   k6json=$(cat "$summary")
 else
-  echo "PERINGATAN: ${summary} tidak ada. Sepertinya k6 gagal menulis ringkasan." >&2
+  echo "PERINGATAN: ${summary} tidak ada. Sepertinya k6 gagal menulis summary." >&2
 fi
 
 echo
@@ -162,10 +168,10 @@ jq -rn \
   --arg strategy "$STRATEGY" --arg dir "$OUT" '
   def ms: if . == null then "-" else ((. * 10 | round) / 10 | tostring) + "ms" end;
   ($r[0]) as $r | ($k.metrics // {}) as $m |
-  "[\($strategy)] terjual=\($r.db.tickets // "-") oversold=\($r.oversold // "-") konsisten=\(if $r.consistent == null then "-" else $r.consistent end)"
+  "[\($strategy)] terjual=\($r.db.tickets // "-") oversold=\($r.oversold // "-") consistent=\(if $r.consistent == null then "-" else $r.consistent end)"
   + " outcomes={\(($r.app.outcomes // {}) | to_entries | map("\(.key):\(.value)") | join(" "))}"
   + " p50=\($m.purchase_latency.values.med | ms) p99=\($m.purchase_latency.values["p(99)"] | ms)"
-  + (if $m.queue_wait then " antre_p99=\($m.queue_wait.values["p(99)"] | ms)" else "" end)
+  + (if $m.queue_wait then " queue_p99=\($m.queue_wait.values["p(99)"] | ms)" else "" end)
   + "\nHasil tersimpan di \($dir)/"'
 
 exit "$k6_status"

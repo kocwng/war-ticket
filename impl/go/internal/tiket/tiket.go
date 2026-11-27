@@ -12,9 +12,9 @@ type Strategy string
 
 const (
 	Naive     Strategy = "naive"     // SELECT lalu UPDATE terpisah (sengaja bocor)
-	ForUpdate Strategy = "forupdate" // kunci baris stok di Postgres
-	Redis     Strategy = "redis"     // DECR atomik via Lua, persist async
-	Queue     Strategy = "queue"     // waiting room di depan jalur Redis
+	ForUpdate Strategy = "forupdate" // row lock di Postgres
+	Redis     Strategy = "redis"     // atomic DECR via Lua script, persist async
+	Queue     Strategy = "queue"     // waiting room di depan request path Redis
 )
 
 func ParseStrategy(s string) (Strategy, error) {
@@ -28,7 +28,7 @@ func ParseStrategy(s string) (Strategy, error) {
 var (
 	ErrSoldOut       = errors.New("tiket habis")
 	ErrEventNotFound = errors.New("event tidak ditemukan")
-	ErrQueueNotFound = errors.New("antrean tidak ditemukan")
+	ErrQueueNotFound = errors.New("queue entry tidak ditemukan")
 )
 
 type Ticket struct {
@@ -38,8 +38,10 @@ type Ticket struct {
 	Strategy Strategy `json:"strategy"`
 }
 
-// PurchaseResult juga mencatat apakah tiketnya baru, atau tiket lama milik
-// user yang menekan Beli lagi.
+/*
+PurchaseResult juga mencatat apakah tiketnya baru, atau tiket lama milik
+user yang menekan Beli lagi.
+*/
 type PurchaseResult struct {
 	Ticket   Ticket
 	Replayed bool

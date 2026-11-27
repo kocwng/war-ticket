@@ -1,13 +1,15 @@
-// Package queue adalah ruang tunggu di depan jalur Redis.
-//
-// Pembeli yang datang dicatat ke list "room" dan langsung dapat 202 beserta
-// queue_id. Di belakang, sejumlah worker (QUEUE_WORKERS) mengambil antrean
-// sesuai urutan datang, lalu menjalankan reserve yang sama dengan strategi
-// redis. Jadi sebesar apa pun lonjakannya, yang menyentuh stok tidak pernah
-// lebih banyak dari jumlah worker itu.
-//
-// Semua state disimpan di Redis supaya beberapa instance app bisa berbagi
-// satu ruang tunggu.
+/*
+Package queue adalah waiting room di depan request path Redis.
+
+Pembeli yang datang di-enqueue ke list "room" dan langsung dapat 202 beserta
+queue_id. Di background, sejumlah worker (QUEUE_WORKERS) men-dequeue secara
+FIFO, lalu menjalankan reserve yang sama dengan strategi redis. Jadi sebesar
+apa pun traffic spike-nya, concurrency ke stok tidak pernah lebih dari
+jumlah worker itu.
+
+Semua state disimpan di Redis supaya beberapa instance app bisa berbagi
+satu waiting room.
+*/
 package queue
 
 import (
@@ -47,8 +49,10 @@ type Entry struct {
 	PollURL  string `json:"poll_url"`
 }
 
-// Observer diberi tahu setiap kali entri diproses, dikembalikan ke antrean,
-// atau selesai. Dipakai untuk metrik dan timeline.
+/*
+Observer dipanggil setiap kali entry di-admit, di-requeue, atau selesai.
+Dipakai untuk metrics dan timeline.
+*/
 type Observer interface {
 	QueueAdmitted()
 	QueueRequeued()
@@ -80,8 +84,10 @@ redis.call('RPUSH', KEYS[3], ARGV[1] .. '|' .. ARGV[3])
 return pos
 `)
 
-// Kalau user ternyata sudah punya tiket, Enqueue mengembalikan tiket itu lewat
-// replay dan tidak memasukkannya ke antrean.
+/*
+Kalau user ternyata sudah punya tiket, Enqueue mengembalikan tiket itu lewat
+replay dan tidak meng-enqueue-nya.
+*/
 func (q *Queue) Enqueue(ctx context.Context, eventID int64, userID string) (e Entry, replay *tiket.Ticket, err error) {
 	left, ok, err := q.stock.Stock(ctx, eventID)
 	if err != nil {
@@ -96,7 +102,7 @@ func (q *Queue) Enqueue(ctx context.Context, eventID int64, userID string) (e En
 		return e, &tiket.Ticket{ID: id, EventID: eventID, UserID: userID, Strategy: tiket.Queue}, nil
 	}
 	if left <= 0 {
-		return e, nil, tiket.ErrSoldOut // ruang tunggu ditutup
+		return e, nil, tiket.ErrSoldOut // waiting room ditutup
 	}
 
 	id := tiket.NewID()
@@ -131,7 +137,7 @@ func (q *Queue) Status(ctx context.Context, id string) (Entry, error) {
 	return e, nil
 }
 
-// Waiting adalah panjang ruang tunggu saat ini (semua event).
+// Waiting adalah queue length saat ini (semua event).
 func (q *Queue) Waiting(ctx context.Context) (int64, error) { return q.rdb.LLen(ctx, roomKey).Result() }
 
 func (q *Queue) Reset(ctx context.Context, eventID int64) error {
@@ -192,8 +198,8 @@ func (q *Queue) admit(ctx context.Context, eventID int64, id string) {
 		q.rdb.HSet(ctx, key, "status", string(SoldOut))
 		q.obs.QueueDone(false)
 	case err != nil:
-		// Kembalikan ke depan antrean supaya tidak hilang.
-		q.log.Warn("queue: reserve gagal, dikembalikan ke antrean", "id", id, "err", err)
+		// Requeue ke depan supaya tidak hilang.
+		q.log.Warn("queue: reserve gagal, di-requeue", "id", id, "err", err)
 		q.rdb.HSet(ctx, key, "status", string(Waiting))
 		q.rdb.LPush(ctx, roomKey, fmt.Sprintf("%d|%s", eventID, id))
 		q.obs.QueueRequeued()

@@ -1,10 +1,12 @@
 //go:build integration
 
-// Test race condition langsung ke Postgres dan Redis, bukan mock.
-// Cara menjalankannya:
-//
-//	docker compose up -d postgres redis
-//	go test -tags integration ./internal/integration_test/ -v
+/*
+Test race condition langsung ke Postgres dan Redis, bukan mock.
+Cara menjalankannya:
+
+	docker compose up -d postgres redis
+	go test -tags integration ./internal/integration_test/ -v
+*/
 package integration_test
 
 import (
@@ -59,8 +61,10 @@ func setup(t *testing.T) (*store.Store, *redisstock.Store, *pgxpool.Pool) {
 	return store.New(pool), redisstock.New(rdb), pool
 }
 
-// rush melepas `buyers` goroutine yang membeli bersamaan, lalu menghitung
-// berapa tiket baru yang terbit.
+/*
+rush melepas `buyers` goroutine yang membeli bersamaan, lalu menghitung
+berapa tiket baru yang terbit.
+*/
 func rush(t *testing.T, buy func(ctx context.Context, user string) (tiket.PurchaseResult, error)) int64 {
 	t.Helper()
 	var created atomic.Int64
@@ -147,8 +151,10 @@ func TestRedisReplayIsIdempotent(t *testing.T) {
 	}
 }
 
-// Test ini sengaja tidak pernah gagal. Tujuannya memperlihatkan bahwa versi
-// naive bisa oversold. Jumlahnya tergantung timing, jadi cukup dicatat di log.
+/*
+Test ini sengaja tidak pernah gagal. Tujuannya memperlihatkan bahwa versi
+naive bisa oversold. Jumlahnya tergantung timing, jadi cukup dicatat di log.
+*/
 func TestNaiveCanOversell(t *testing.T) {
 	db, _, _ := setup(t)
 	ctx := context.Background()

@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>War Tiket Replay</title>
+<meta name="description" content="Replay load test backend war tiket: empat strategi menjaga stok saat 1.000 concurrent request menyerbu endpoint purchase.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&display=swap">
+<style>
+/* Tiket cetak: kertas putih, tinta hitam, merah hanya untuk yang salah.
+   Satu kolom, judul besar yang berubah per run, satu grafik yang bisa digeser. */
+:root {
+  color-scheme: light;
+  --paper: #ffffff;
+  --ink: #141414;
+  --ink-soft: #5e5e5e;
+  --rule: #dedede;
+  --wash: #eeeeee;
+  --red: #d22a1e;
+  --display: "Big Shoulders Display", "Big Shoulders", "Oswald", "Arial Narrow", sans-serif;
+  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font: 16px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+.wrap {
+  max-width: 1040px; margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+
+/* Bar atas */
+.bar { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding-block: 22px 0; font-size: 14px; }
+.mark { font: 800 20px/1 var(--display); letter-spacing: 0.04em; text-transform: uppercase; }
+.bar a { color: var(--ink-soft); text-decoration: none; border-bottom: 1px solid var(--rule); }
+.bar a:hover { color: var(--ink); border-color: var(--ink); }
+
+/* Bab skenario */
+.chapters { display: flex; flex-wrap: wrap; gap: 6px 28px; margin-top: 56px; }
+.chapters button {
+  background: none; border: 0; padding: 0 0 6px; cursor: pointer; font-size: 15px; color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+}
+.chapters button b { font: 700 15px/1 var(--display); margin-right: 8px; }
+.chapters button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
+.chapters button:hover { color: var(--ink); }
+
+/* Judul yang berubah per run */
+h1 {
+  font: 800 clamp(2.6rem, 7vw, 5.4rem)/0.95 var(--display); letter-spacing: -0.005em; text-transform: uppercase;
+  margin: 28px 0 0; max-width: 19ch; text-wrap: balance;
+}
+h1 .red { color: var(--red); }
+.lede { margin: 20px 0 0; max-width: 64ch; color: var(--ink-soft); font-size: 17px; }
+.lede code { font: 500 0.88em/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--ink); }
+
+/* Pilihan strategi */
+.picker { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 32px; }
+.picker button {
+  background: var(--paper); border: 1px solid var(--ink); padding: 9px 14px; cursor: pointer; font-size: 15px; font-weight: 500;
+}
+.picker button[aria-checked="true"] { background: var(--ink); color: var(--paper); }
+.picker button:hover:not([aria-checked="true"]) { background: var(--wash); }
+
+/* Replay stage */
+.stage { margin-top: 48px; padding-top: 20px; border-top: 2px solid var(--ink); }
+.readout { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 640px) { .readout { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 20px; } }
+.readout span { display: block; }
+.lbl { font-size: 13px; color: var(--ink-soft); }
+.big { font: 800 clamp(2.2rem, 5vw, 3.4rem)/1 var(--display); font-variant-numeric: tabular-nums; margin-top: 4px; }
+.big.red { color: var(--red); }
+.sub { font-size: 13px; color: var(--ink-soft); margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+.plot { margin-top: 28px; position: relative; touch-action: pan-y; cursor: ew-resize; }
+.plot canvas { display: block; width: 100%; }
+#c-stock { height: 300px; }
+#c-active { height: 96px; margin-top: 6px; }
+@media (max-width: 640px) { #c-stock { height: 230px; } }
+.plot-cap { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+
+.transport { display: flex; align-items: center; gap: 16px; margin-top: 18px; flex-wrap: wrap; }
+#play {
+  background: var(--ink); color: var(--paper); border: 0; padding: 11px 20px 11px 16px; cursor: pointer;
+  font-weight: 600; font-size: 15px; display: inline-flex; align-items: center; gap: 10px; min-width: 124px;
+}
+#play .glyph { width: 0; height: 0; border-left: 10px solid currentColor; border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+#play.pause .glyph { width: 10px; height: 12px; border: 0; border-left: 3px solid currentColor; border-right: 3px solid currentColor; }
+#scrub { flex: 1 1 200px; min-width: 0; -webkit-appearance: none; appearance: none; background: transparent; height: 20px; cursor: pointer; }
+#scrub::-webkit-slider-runnable-track { height: 2px; background: var(--ink); }
+#scrub::-moz-range-track { height: 2px; background: var(--ink); }
+#scrub::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; background: var(--ink); border: 0; margin-top: -6px; }
+#scrub::-moz-range-thumb { width: 14px; height: 14px; background: var(--ink); border: 0; border-radius: 0; }
+.note { font-size: 13px; color: var(--ink-soft); }
+
+.events { list-style: none; margin: 22px 0 0; padding: 0; font-size: 14px; display: grid; gap: 4px; min-height: 2em; }
+.events li { display: grid; grid-template-columns: 6.5em 1fr; gap: 12px; }
+.events .t { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.events .bad { color: var(--red); font-weight: 600; }
+
+/* Perbandingan */
+.compare { margin-top: 72px; }
+h2 { font: 800 28px/1.05 var(--display); text-transform: uppercase; margin: 0; }
+.compare .note { margin-top: 6px; }
+.table-wrap { overflow-x: auto; margin-top: 18px; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 11px 10px; white-space: nowrap; vertical-align: top; }
+th:first-child, td:first-child { text-align: left; padding-left: 0; }
+th { font-size: 13px; font-weight: 500; color: var(--ink-soft); border-bottom: 2px solid var(--ink); }
+td { border-bottom: 1px solid var(--rule); }
+tbody tr { cursor: pointer; }
+tbody tr:hover td { background: #f6f6f6; }
+tr.on td { font-weight: 600; }
+tr.on td:first-child::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--ink); margin-right: 8px; vertical-align: 1px; }
+td.bad { color: var(--red); }
+td small { display: block; color: var(--ink-soft); font-size: 12px; font-weight: 400; }
+
+/* Detail pengujian: seperti cetakan kecil di balik tiket */
+.specs { margin-top: 72px; padding-top: 20px; border-top: 2px solid var(--ink); }
+.spec-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 24px; }
+@media (max-width: 760px) { .spec-grid { grid-template-columns: minmax(0, 1fr); gap: 28px; } }
+h3 { font: 700 15px/1 var(--display); letter-spacing: 0.06em; text-transform: uppercase; margin: 0 0 4px; }
+.specs dl { margin: 0; }
+.specs dl > div { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+.specs dt { font-size: 12.5px; color: var(--ink-soft); }
+.specs dd { margin: 2px 0 0; font-size: 15px; }
+.specs code { font: inherit; }
+.spec-hint { margin-top: 6px; }
+.specs dd.tip {
+  width: fit-content; max-width: 100%; cursor: help;
+  text-decoration: underline dotted var(--ink-soft); text-decoration-thickness: 1px; text-underline-offset: 4px;
+}
+.specs dd.tip:hover, .specs dd.tip.open { text-decoration-color: var(--ink); text-decoration-style: solid; }
+#tip {
+  position: absolute; z-index: 20; max-width: min(320px, calc(100vw - 24px));
+  background: var(--ink); color: var(--paper); padding: 10px 12px;
+  font-size: 13.5px; line-height: 1.5; pointer-events: none;
+}
+@media (max-width: 760px) {
+  .specs dl > div { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 12px; padding: 8px 0; }
+  .specs dt { font-size: 14px; }
+  .specs dd { margin: 0; }
+}
+
+footer { margin-top: 40px; padding-block: 0 48px; font-size: 14px; color: var(--ink-soft); display: flex; flex-wrap: wrap; gap: 6px 24px; }
+footer a { color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <span class="mark">War Tiket</span>
+    <a id="repo-link" href="https://github.com/kocwng/war-ticket" rel="noopener">Source code dan raw data di GitHub</a>
+  </header>
+
+  <nav class="chapters" role="tablist" aria-label="Skenario">
+    <button role="tab" data-sc="normal" aria-selected="true"><b>1</b>Baseline</button>
+    <button role="tab" data-sc="slow" aria-selected="false"><b>2</b>Slow DB</button>
+    <button role="tab" data-sc="load" aria-selected="false"><b>3</b>Concurrency</button>
+  </nav>
+
+  <h1 id="headline"></h1>
+  <p class="lede" id="lede"></p>
+
+  <div class="picker" id="picker" role="radiogroup" aria-label="Pilih run"></div>
+
+  <section class="stage" aria-label="Replay">
+    <div class="readout">
+      <div><span class="lbl">Jam</span><span class="big" id="r-clock">10:00:00</span><span class="sub" id="r-ms"></span></div>
+      <div><span class="lbl">Stok tersisa</span><span class="big" id="r-stock">0</span><span class="sub" id="r-cap"></span></div>
+      <div><span class="lbl">Tiket terbit</span><span class="big" id="r-sold">0</span><span class="sub" id="r-sold-sub"></span></div>
+      <div><span class="lbl">In-flight request</span><span class="big" id="r-active">0</span><span class="sub" id="r-wait"></span></div>
+    </div>
+
+    <div class="plot" id="plot">
+      <canvas id="c-stock" aria-label="Grafik stok tiket terhadap waktu"></canvas>
+      <canvas id="c-active" aria-label="Grafik request di server terhadap waktu"></canvas>
+    </div>
+    <div class="plot-cap"><span id="cap-left">Atas: sisa stok. Bawah: in-flight request.</span><span id="cap-right"></span></div>
+
+    <div class="transport">
+      <button id="play" type="button"><span class="glyph" aria-hidden="true"></span><span id="play-label">Putar</span></button>
+      <input type="range" id="scrub" min="0" max="1000" step="1" value="1000" aria-label="Scrub timeline replay">
+    </div>
+    <p class="note" id="speed-note"></p>
+
+    <ol class="events" id="events" aria-live="off"></ol>
+  </section>
+
+  <section class="compare">
+    <h2 id="table-title">Semua strategi</h2>
+    <p class="note" id="table-note"></p>
+    <div class="table-wrap">
+      <table>
+        <thead id="thead"></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Nilai di bawah diambil dari meta.json hasil benchmark dan dari mesin
+       yang menjalankannya (27 November 2026). Perbarui kalau benchmark diulang
+       di mesin lain. -->
+  <section class="specs" aria-labelledby="specs-title">
+    <h2 id="specs-title">Test setup</h2>
+    <p class="note spec-hint">Hover atau tap nilainya untuk melihat perannya di pengujian ini.</p>
+    <div class="spec-grid">
+      <div>
+        <h3>Hardware</h3>
+        <dl>
+          <div><dt>Laptop</dt><dd class="tip" tabindex="0" data-tip="Host tempat semua komponen jalan: app, Postgres, Redis, dan k6. Karena k6 ikut memakai CPU yang sama, angka absolutnya ikut terpengaruh. Yang paling bisa dipegang adalah perbandingan antarstrategi.">MacBook Air M2 (2022)</dd></div>
+          <div><dt>CPU</dt><dd class="tip" tabindex="0" data-tip="Apple M2 punya 4 performance core dan 4 efficiency core. App Go cuma boleh memakai 2 core, sisanya dipakai Postgres, Redis, dan k6.">8 core, 4 performance + 4 efficiency</dd></div>
+          <div><dt>RAM</dt><dd class="tip" tabindex="0" data-tip="Total memory laptop. Docker hanya diberi sebagian, sisanya untuk macOS.">8 GB</dd></div>
+          <div><dt>Docker</dt><dd class="tip" tabindex="0" data-tip="Semua komponen jalan di container. Di Mac, container berjalan di dalam Linux VM, dan VM itu yang dapat jatah 8 CPU dan 3,8 GB.">Docker Desktop 29.7, VM 8 CPU dan 3,8 GB</dd></div>
+          <div><dt>Container app</dt><dd class="tip" tabindex="0" data-tip="Resource limit khusus untuk app Go. Versi Python dan Rust nanti dapat limit yang sama supaya perbandingan antarbahasa adil. Go otomatis menyesuaikan GOMAXPROCS ke 2 CPU ini.">Limit 2 CPU dan 512 MB</dd></div>
+        </dl>
+      </div>
+      <div>
+        <h3>Stack</h3>
+        <dl>
+          <div><dt>Bahasa</dt><dd class="tip" tabindex="0" data-tip="API server ditulis dengan Go. Routing pakai net/http dari standard library, tanpa framework, supaya yang terukur adalah strateginya, bukan overhead framework.">Go 1.27, router <code>net/http</code> bawaan</dd></div>
+          <div><dt>Database</dt><dd class="tip" tabindex="0" data-tip="Primary database, berisi tabel events (stok) dan tickets. Strategi tanpa lock dan FOR UPDATE bekerja langsung di sini. App membuka paling banyak 20 koneksi lewat driver pgx, dan connection pool inilah yang jadi rebutan saat database lambat.">PostgreSQL 17, connection pool 20 (pgx v5)</dd></div>
+          <div><dt>Stock store & queue</dt><dd class="tip" tabindex="0" data-tip="In-memory store untuk stok di strategi Redis dan waiting room. Lua script menggabungkan check dan decrement stok jadi satu operasi atomic. Stream orders menampung tiket yang belum di-persist ke Postgres.">Redis 7.4, Lua script dan stream (go-redis v9)</dd></div>
+          <div><dt>Image app</dt><dd class="tip" tabindex="0" data-tip="Ukuran Docker image app Go. Isinya cuma satu binary, tanpa shell atau package manager, jadi kecil dan attack surface-nya sempit.">6 MB, distroless</dd></div>
+          <div><dt>Fault injection</dt><dd class="tip" tabindex="0" data-tip="Proxy di antara app dan Postgres. Di skenario slow DB, Toxiproxy menambah latency sekitar 40 ms ke setiap response dari Postgres untuk mensimulasikan database yang sedang sibuk.">Toxiproxy 2.9, +40 ms ±10 ms per query</dd></div>
+        </dl>
+      </div>
+      <div>
+        <h3>Methodology</h3>
+        <dl>
+          <div><dt>Load generator</dt><dd class="tip" tabindex="0" data-tip="Load testing tool dari Grafana. k6 menjalankan ribuan virtual user (VU) yang menembak endpoint purchase, lalu mencatat latency dan status code setiap request.">k6 0.54</dd></div>
+          <div><dt>Load</dt><dd class="tip" tabindex="0" data-tip="Setiap pembeli punya user_id unik dan membeli satu kali. 1.000 request dikirim concurrent sampai 5.000 pembeli habis. Stok sengaja jauh lebih kecil dari jumlah pembeli supaya terjadi contention.">5.000 pembeli, 1.000 concurrent, stok 500</dd></div>
+          <div><dt>Timeout</dt><dd class="tip" tabindex="0" data-tip="Kalau request belum selesai dalam 2 detik, context-nya di-cancel dan server membalas 504. Timeout ini yang membuat strategi berbasis database gagal saat database lambat.">2 detik per request</dd></div>
+          <div><dt>Runs</dt><dd class="tip" tabindex="0" data-tip="Setiap strategi dijalankan 5 kali secara interleaved, supaya kalau laptop makin panas dampaknya terbagi rata. Satu run warm-up dibuang dulu supaya connection pool dan cache sudah siap.">5 run per strategi, plus 1 warm-up</dd></div>
+          <div><dt>Sampling</dt><dd class="tip" tabindex="0" data-tip="Server mencatat jumlah tiket terbit dan in-flight request setiap 10 ms. Data itulah yang jadi grafik di atas. Latency dan error diukur k6 dari sisi client.">Stok dan in-flight request tiap 10 ms dari server, latency dan error dari k6</dd></div>
+          <div><dt>Replay</dt><dd class="tip" tabindex="0" data-tip="Yang di-replay bukan run terbaik, tapi run dengan p50 paling tengah dari lima run. Tabel di atas memakai median dari kelima run.">Run dengan p50 median. Tabel memakai median.</dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <footer id="foot-links"></footer>
+</div>
+
+<script src="data.js"></script>
+<script>
+(() => {
+  "use strict";
+  const D = window.WAR_TICKET_DATA;
+  const $ = (s) => document.querySelector(s);
+
+  // ---------- Teks ----------
+  const NAME = {
+    naive: "Tanpa lock", forupdate: "FOR UPDATE", redis: "Redis", queue: "Waiting room",
+    "50": "50 concurrent", "200": "200 concurrent", "1000": "1.000 concurrent"
+  };
+  const FULL = {
+    naive: "Tanpa lock", forupdate: "SELECT … FOR UPDATE", redis: "Redis + Lua script", queue: "Waiting room + Redis"
+  };
+  const SCENARIO = {
+    normal: { keys: ["naive", "forupdate", "redis", "queue"], def: "naive",
+      table: "Semua strategi, baseline", note: "5.000 pembeli, 1.000 concurrent request, stok 500. Median dari 5 run, range min–max di bawah angka." },
+    slow: { keys: ["naive", "forupdate", "redis", "queue"], def: "naive",
+      table: "Semua strategi, slow DB", note: "Latency +40 ms per query ke Postgres lewat Toxiproxy. Median dari 5 run." },
+    load: { keys: ["50", "200", "1000"], def: "50",
+      table: "Naive di berbagai level concurrency", note: "Strategi naive, latency DB +40 ms. Satu run per level concurrency." }
+  };
+
+  // Judul memakai [r]...[/r] untuk bagian yang dicetak merah.
+  const HEAD = {
+    normal: {
+      naive: "Tanpa lock, stok 500 terjual [r]1.000 tiket.[/r]",
+      forupdate: "Row lock bikin stok aman, tapi request harus menunggu lock.",
+      redis: "Stok dipindah ke Redis, atomic dan 5× lebih cepat.",
+      queue: "Waiting room membatasi load, stok tetap pas."
+    },
+    slow: {
+      naive: "Database lambat 40 ms, [r]tidak ada tiket terjual.[/r]",
+      forupdate: "Dengan row lock, [r]cuma 1 tiket[/r] yang sempat terjual.",
+      redis: "Database lambat tidak terasa di request path Redis.",
+      queue: "Waiting room tetap normal, nol timeout."
+    },
+    load: {
+      "50": "Di 50 concurrent request, race condition belum kelihatan.",
+      "200": "Di 200 concurrent request, [r]oversold 100 tiket.[/r]",
+      "1000": "Di 1.000 concurrent request, [r]sistemnya collapse.[/r]"
+    }
+  };
+
+  const STORY = {
+    normal: {
+      naive: "Check stok dan decrement stok jalan di dua query terpisah. Di antara keduanya, request lain membaca stok yang sama dan ikut lolos. Kelima run berhenti tepat di 1.000 tiket, sama dengan jumlah concurrent request.",
+      forupdate: "Baris stok di-lock dengan `SELECT … FOR UPDATE` selama transaction, jadi decrement berjalan satu per satu. Stoknya aman, tapi setiap request harus menunggu lock dilepas. Median latency 207 ms, sekitar 5× lebih lambat dari versi Redis.",
+      redis: "Check dan decrement stok digabung dalam satu Lua script yang dieksekusi Redis secara atomic. Database tidak disentuh sama sekali di request path. Tiket di-persist ke Postgres secara async oleh worker, dan setelah selesai stok di Redis dan Postgres selalu sama.",
+      queue: "Request beli hanya enqueue pembeli ke Redis, lalu langsung dibalas 202. 64 worker memproses queue secara FIFO, jadi concurrency ke stok tidak pernah lebih dari 64. Setelah stok habis, request baru langsung ditolak tanpa masuk queue."
+    },
+    slow: {
+      naive: "Setiap query diperlambat 40 ms. Versi naive butuh 4 query per request, sementara connection pool cuma punya 20 koneksi untuk 1.000 request. Sebelum query keempat sempat jalan, request-nya sudah kena timeout 2 detik. Database tetap bekerja, tapi hasilnya terbuang untuk request yang sudah timeout.",
+      forupdate: "Lock dipegang selama 4 query, dan tiap query sekarang butuh sekitar 45 ms. Throughput-nya jadi cuma sekitar 5 transaction per detik, dan request lain menunggu sampai timeout. Dari lima run, median-nya 1 tiket dari 500.",
+      redis: "Request path hanya bicara dengan Redis, jadi database yang lambat tidak ikut memperlambatnya. Yang melambat cuma worker yang persist tiket ke Postgres di background. Median latency 36 ms, sama seperti baseline.",
+      queue: "Sama seperti versi Redis, database tidak ada di request path. Tidak ada request yang timeout, dan median latency-nya 43 ms."
+    },
+    load: {
+      "50": "Kode naive dan database lambat yang sama. Dengan 50 concurrent request, tidak ada dua request yang kebetulan membaca stok terakhir bersamaan, jadi hasilnya pas 500. Race condition-nya tetap ada, cuma belum ke-trigger.",
+      "200": "Dengan 200 concurrent request, beberapa request mulai membaca stok terakhir bersamaan. Hasilnya 600 tiket untuk 500 kursi, dan median latency sudah 1,5 detik karena request menunggu koneksi dari connection pool.",
+      "1000": "Dengan 1.000 concurrent request, terlalu banyak request yang menunggu koneksi dari connection pool. Tidak ada request yang selesai sebelum timeout, jadi tidak ada tiket yang terjual. Kodenya sama persis dengan dua run sebelumnya."
+    }
+  };
+
+  // ---------- Format ----------
+  const fmt = (n) => Math.round(n).toLocaleString("id-ID");
+  const ms = (v) => v >= 1000
+    ? (v / 1000).toLocaleString("id-ID", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " dtk"
+    : Math.round(v).toLocaleString("id-ID") + " ms";
+  const secs = (t) => (t / 1000).toLocaleString("id-ID", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " dtk";
+  const hms = (t) => { const s = Math.floor(Math.max(0, t) / 1000); return `10:${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; };
+
+  // ---------- State ----------
+  const S = { sc: "normal", key: "naive", tc: 0, playing: false, last: 0 };
+  const run = () => D[S.sc].runs[S.key];
+  const endT = (r) => r.points[r.points.length - 1][0];
+  function at(r, t) {
+    const p = r.points; let lo = 0, hi = p.length - 1;
+    while (lo < hi) { const m = (lo + hi + 1) >> 1; if (p[m][0] <= t) lo = m; else hi = m - 1; }
+    return p[lo];
+  }
+
+  function eventsOf(r) {
+    const cap = r.capacity, ev = [];
+    let first = null, zero = null, over = null, peakA = [0, 0], peakW = [0, 0];
+    for (const [t, sold, act, wait] of r.points) {
+      if (first === null && sold > 0) first = t;
+      if (zero === null && sold >= cap) zero = t;
+      if (over === null && sold > cap) over = t;
+      if (act > peakA[0]) peakA = [act, t];
+      if (wait > peakW[0]) peakW = [wait, t];
+    }
+    ev.push([0, "", `Mulai: ${fmt(r.buyers)} pembeli, ${fmt(r.vus)} concurrent request, stok ${fmt(cap)}.`]);
+    if (peakA[0] > 0) ev.push([peakA[1], "", `Peak ${fmt(peakA[0])} in-flight request.`]);
+    if (peakW[0] > 0) ev.push([peakW[1], "", `Peak queue length ${fmt(peakW[0])}.`]);
+    if (first !== null) ev.push([first, "", "Tiket pertama terbit."]);
+    if (zero !== null && over === null) ev.push([zero, "", "Stok habis tepat di 0."]);
+    if (over !== null) ev.push([over, "bad", `Tiket ke-${fmt(cap + 1)} terbit, mulai oversold.`]);
+    const end = endT(r), sold = r.tickets;
+    if (sold > cap) ev.push([end, "bad", `Selesai: ${fmt(sold)} tiket, oversold ${fmt(sold - cap)}.`]);
+    else if (sold === 0 && r.e504 > 0) ev.push([end, "bad", `Selesai: 0 tiket, ${fmt(r.e504)} request timeout.`]);
+    else if (sold < cap && r.e504 > 0) ev.push([end, "bad", `Selesai: ${fmt(sold)} tiket, ${fmt(r.e504)} request timeout.`]);
+    else ev.push([end, "", `Selesai: ${fmt(sold)} tiket, tanpa oversold.`]);
+    return ev.sort((a, b) => a[0] - b[0]);
+  }
+
+  // ---------- Render ----------
+  let evCache = null, evShown = -1;
+
+  function render() {
+    const r = run(), [, sold, act, wait] = at(r, S.tc), cap = r.capacity, end = endT(r), done = S.tc >= end;
+    $("#r-clock").textContent = hms(S.tc);
+    $("#r-ms").textContent = `+${secs(S.tc)}`;
+    const left = cap - sold;
+    const st = $("#r-stock"); st.textContent = fmt(left); st.className = "big" + (left < 0 ? " red" : "");
+    $("#r-cap").textContent = left < 0 ? `oversold ${fmt(-left)}` : `kapasitas ${fmt(cap)}`;
+    $("#r-sold").textContent = fmt(sold);
+    $("#r-sold-sub").textContent = done && r.e504 ? `${fmt(r.e504)} × 504 timeout` : done ? `${fmt(r.soldOut)} × 409 sold out` : "";
+    $("#r-active").textContent = fmt(act);
+    $("#r-wait").textContent = r.strategy === "queue" ? `${fmt(wait)} di queue` : "concurrent";
+
+    const pb = $("#play");
+    pb.classList.toggle("pause", S.playing);
+    $("#play-label").textContent = S.playing ? "Jeda" : done ? "Putar ulang" : "Lanjut";
+    $("#scrub").value = Math.min(S.tc, end);
+
+    if (!evCache) evCache = eventsOf(r);
+    const n = evCache.filter((e) => e[0] <= S.tc).length;
+    if (n !== evShown) {
+      evShown = n;
+      const ol = $("#events"); ol.textContent = "";
+      for (const [t, cls, msg] of evCache.slice(0, n)) {
+        const li = document.createElement("li");
+        const a = document.createElement("span"); a.className = "t"; a.textContent = `+${secs(t)}`;
+        const b = document.createElement("span"); if (cls) b.className = cls; b.textContent = msg;
+        li.append(a, b); ol.append(li);
+      }
+    }
+    drawAll();
+  }
+
+  function renderHeadline() {
+    const h = $("#headline"); h.textContent = "";
+    const parts = HEAD[S.sc][S.key].split(/(\[r\].*?\[\/r\])/);
+    for (const p of parts) {
+      if (!p) continue;
+      const m = p.match(/^\[r\](.*)\[\/r\]$/);
+      if (m) { const s = document.createElement("span"); s.className = "red"; s.textContent = m[1]; h.append(s); }
+      else h.append(document.createTextNode(p));
+    }
+    // `kode` di narasi dirender sebagai <code>
+    const lede = $("#lede"); lede.textContent = "";
+    STORY[S.sc][S.key].split(/(`[^`]+`)/).forEach((p) => {
+      if (!p) return;
+      if (p.startsWith("`")) { const c = document.createElement("code"); c.textContent = p.slice(1, -1); lede.append(c); }
+      else lede.append(document.createTextNode(p));
+    });
+  }
+
+  function renderPicker() {
+    const box = $("#picker"); box.textContent = "";
+    for (const k of SCENARIO[S.sc].keys) {
+      const b = document.createElement("button");
+      b.type = "button"; b.setAttribute("role", "radio"); b.id = `pick-${S.sc}-${k}`;
+      b.setAttribute("aria-checked", String(k === S.key));
+      b.textContent = NAME[k];
+      b.addEventListener("click", () => choose(S.sc, k, true));
+      box.append(b);
+    }
+    document.querySelectorAll(".chapters button").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.sc === S.sc)));
+  }
+
+  function renderRunInfo() {
+    const r = run(), end = endT(r);
+    evCache = null; evShown = -1;
+    $("#scrub").max = end;
+    const sp = speed();
+    const m = r.dir.match(/\/r(\d+)-/);
+    const which = m ? `Run ke-${m[1]} dari 5, dipilih karena p50-nya median.` : "Run tambahan di luar 5 run utama.";
+    $("#speed-note").textContent = `Durasi asli ${secs(end)}, di-replay pada ${sp.toLocaleString("id-ID", { maximumFractionDigits: 2 })}× supaya sempat terlihat. ${which}`;
+    $("#cap-right").textContent = `p50 ${ms(r.p50)} · p99 ${ms(r.p99)}`;
+    $("#cap-left").textContent = "Atas: sisa stok. Bawah: in-flight request" +
+      (r.strategy === "queue" ? ", garis putus-putus = queue length." : ".");
+  }
+
+  function renderTable() {
+    const thead = $("#thead"), tbody = $("#tbody");
+    $("#table-title").textContent = SCENARIO[S.sc].table;
+    $("#table-note").textContent = SCENARIO[S.sc].note;
+    tbody.textContent = "";
+    const rng = (s, f) => s.min === s.max ? "" : `<small>${f(s.min)} – ${f(s.max)}</small>`;
+    const row = (key, cells) => {
+      const tr = document.createElement("tr");
+      if (key === S.key) tr.className = "on";
+      tr.innerHTML = cells;
+      tr.addEventListener("click", () => choose(S.sc, key, true));
+      tbody.append(tr);
+    };
+    if (S.sc === "load") {
+      thead.innerHTML = "<tr><th>Concurrency</th><th>Tiket terbit</th><th>Oversold</th><th>Timeout</th><th>p50</th><th>p99</th></tr>";
+      for (const k of SCENARIO.load.keys) {
+        const r = D.load.runs[k];
+        row(k, `<td>${fmt(+k)}</td><td>${fmt(r.tickets)}</td><td class="${r.oversold ? "bad" : ""}">${fmt(r.oversold)}</td>` +
+          `<td class="${r.e504 ? "bad" : ""}">${fmt(r.e504)}</td><td>${ms(r.p50)}</td><td>${ms(r.p99)}</td>`);
+      }
+      return;
+    }
+    thead.innerHTML = "<tr><th>Strategi</th><th>Tiket terbit</th><th>Oversold</th><th>Timeout</th><th>p50</th><th>p99</th></tr>";
+    for (const s of D[S.sc].summary) {
+      row(s.strategy,
+        `<td>${FULL[s.strategy]}</td>` +
+        `<td>${fmt(s.tickets.med)}${rng(s.tickets, fmt)}</td>` +
+        `<td class="${s.oversold.med ? "bad" : ""}">${fmt(s.oversold.med)}</td>` +
+        `<td class="${s.e504.med ? "bad" : ""}">${fmt(s.e504.med)}${rng(s.e504, fmt)}</td>` +
+        `<td>${ms(s.p50.med)}${rng(s.p50, ms)}</td>` +
+        `<td>${ms(s.p99.med)}${rng(s.p99, ms)}</td>`);
+    }
+  }
+
+  // ---------- Grafik ----------
+  const css = () => { const cs = getComputedStyle(document.documentElement), g = (k) => cs.getPropertyValue(k).trim();
+    return { ink: g("--ink"), soft: g("--ink-soft"), rule: g("--rule"), wash: g("--wash"), red: g("--red"), body: g("--body") }; };
+  const PAD = { l: 0, r: 64, t: 10, b: 0 };
+
+  function prep(cv) {
+    const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return null;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+  }
+  const nice = (v) => { if (v <= 10) return 10; const p = 10 ** Math.floor(Math.log10(v)), f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; };
+
+  function drawStock() {
+    const g = prep($("#c-stock")); if (!g) return;
+    const { ctx, w, h } = g, c = css(), r = run(), cap = r.capacity, end = endT(r);
+    const maxSold = Math.max(...r.points.map((p) => p[1])), low = cap - maxSold;
+    const yMin = low < 0 ? low * 1.2 : 0, yMax = cap;
+    const pb = 26, pw = w - PAD.l - PAD.r, ph = h - PAD.t - pb;
+    const X = (t) => PAD.l + (t / end) * pw, Y = (v) => PAD.t + (1 - (v - yMin) / (yMax - yMin)) * ph;
+    ctx.font = `12px ${c.body}`; ctx.textBaseline = "middle";
+
+    // garis acuan: kapasitas dan nol
+    const ref = (v, label, color, dash) => {
+      const y = Math.round(Y(v)) + 0.5;
+      ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash(dash);
+      ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(w - PAD.r, y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = color === c.rule ? c.soft : color; ctx.textAlign = "left"; ctx.fillText(label, w - PAD.r + 8, y);
+    };
+    ref(cap, `${fmt(cap)} kursi`, c.rule, [2, 4]);
+    ref(0, "habis", c.ink, []);
+    if (low < 0) ref(low, fmt(low), c.red, [2, 4]);
+
+    // label waktu
+    ctx.fillStyle = c.soft; ctx.textBaseline = "alphabetic";
+    const step = nice(end / 5);
+    for (let t = step; t < end; t += step) {
+      ctx.textAlign = "center";
+      ctx.fillText(end < 2000 ? `${fmt(t)} ms` : `${(t / 1000).toLocaleString("id-ID")} dtk`, X(t), h - 6);
+    }
+    ctx.textAlign = "left"; ctx.fillText("10:00", PAD.l, h - 6);
+
+    const pts = r.points.filter((p) => p[0] <= S.tc);
+    if (pts.length) {
+      const path = () => { ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(X(p[0]), Y(cap - p[1])) : ctx.moveTo(X(p[0]), Y(cap - p[1]))); };
+      path(); ctx.lineTo(X(pts[pts.length - 1][0]), Y(0)); ctx.lineTo(X(pts[0][0]), Y(0)); ctx.closePath();
+      ctx.fillStyle = c.wash; ctx.fill();
+      path(); ctx.strokeStyle = c.ink; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.stroke();
+      if (low < 0) {
+        ctx.save(); ctx.beginPath(); ctx.rect(0, Y(0), w, h); ctx.clip();
+        path(); ctx.lineTo(X(pts[pts.length - 1][0]), Y(0)); ctx.lineTo(X(pts[0][0]), Y(0)); ctx.closePath();
+        ctx.fillStyle = "rgba(210, 42, 30, 0.14)"; ctx.fill();
+        path(); ctx.strokeStyle = c.red; ctx.lineWidth = 2.5; ctx.stroke();
+        ctx.restore();
+      }
+      const lp = pts[pts.length - 1], v = cap - lp[1];
+      ctx.beginPath(); ctx.arc(X(lp[0]), Y(v), 4.5, 0, Math.PI * 2); ctx.fillStyle = v < 0 ? c.red : c.ink; ctx.fill();
+    }
+    playhead(ctx, X(Math.min(S.tc, end)), PAD.t, h - pb, c);
+  }
+
+  function drawActive() {
+    const g = prep($("#c-active")); if (!g) return;
+    const { ctx, w, h } = g, c = css(), r = run(), end = endT(r);
+    const peak = Math.max(1, ...r.points.map((p) => Math.max(p[2], p[3]))), top = nice(peak);
+    const pw = w - PAD.l - PAD.r, ph = h - 8;
+    const X = (t) => PAD.l + (t / end) * pw, Y = (v) => 4 + (1 - v / top) * ph;
+    ctx.font = `12px ${c.body}`; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    ctx.strokeStyle = c.rule; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(PAD.l, Math.round(Y(0)) + 0.5); ctx.lineTo(w - PAD.r, Math.round(Y(0)) + 0.5); ctx.stroke();
+    ctx.fillStyle = c.soft; ctx.fillText(fmt(top), w - PAD.r + 8, Y(top) + 4); ctx.fillText("0", w - PAD.r + 8, Y(0) - 2);
+
+    const pts = r.points.filter((p) => p[0] <= S.tc);
+    if (pts.length) {
+      const line = (i) => { ctx.beginPath(); pts.forEach((p, j) => j ? ctx.lineTo(X(p[0]), Y(p[i])) : ctx.moveTo(X(p[0]), Y(p[i]))); };
+      line(2); ctx.lineTo(X(pts[pts.length - 1][0]), Y(0)); ctx.lineTo(X(pts[0][0]), Y(0)); ctx.closePath();
+      ctx.fillStyle = c.wash; ctx.fill();
+      line(2); ctx.strokeStyle = c.soft; ctx.lineWidth = 1.5; ctx.stroke();
+      if (r.strategy === "queue") { line(3); ctx.strokeStyle = c.ink; ctx.setLineDash([4, 3]); ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]); }
+    }
+    playhead(ctx, X(Math.min(S.tc, end)), 0, h, c);
+  }
+
+  function playhead(ctx, x, y0, y1, c) {
+    if (S.tc >= endT(run()) && !S.playing) return;
+    ctx.strokeStyle = c.ink; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, y0); ctx.lineTo(Math.round(x) + 0.5, y1); ctx.stroke();
+  }
+  function drawAll() { drawStock(); drawActive(); }
+
+  // ---------- Pemutar ----------
+  const speed = () => Math.min(2, Math.max(0.05, endT(run()) / 8000)); // sekitar 8 detik per run
+  function frame(now) {
+    if (!S.playing) return;
+    const dt = Math.min(250, now - S.last); S.last = now;
+    S.tc = Math.min(endT(run()), S.tc + dt * speed());
+    if (S.tc >= endT(run())) S.playing = false;
+    render();
+    if (S.playing) requestAnimationFrame(frame);
+  }
+  function toggle() {
+    if (S.playing) { S.playing = false; render(); return; }
+    if (S.tc >= endT(run())) S.tc = 0;
+    S.playing = true; S.last = performance.now(); render(); requestAnimationFrame(frame);
+  }
+  function choose(sc, key, autoplay) {
+    S.sc = sc; S.key = key; S.playing = false; S.tc = autoplay ? 0 : endT(run());
+    renderPicker(); renderHeadline(); renderRunInfo(); renderTable(); render();
+    try { history.replaceState(null, "", `#${sc}-${key}`); } catch (e) { /* abaikan */ }
+    if (autoplay) toggle();
+  }
+
+  // Geser langsung di grafik
+  const plot = $("#plot");
+  let dragging = false;
+  const seek = (e) => {
+    const cv = $("#c-stock"), rect = cv.getBoundingClientRect(), pw = rect.width - PAD.l - PAD.r;
+    const f = Math.min(1, Math.max(0, (e.clientX - rect.left - PAD.l) / pw));
+    S.playing = false; S.tc = f * endT(run()); render();
+  };
+  plot.addEventListener("pointerdown", (e) => { dragging = true; plot.setPointerCapture(e.pointerId); seek(e); });
+  plot.addEventListener("pointermove", (e) => { if (dragging) seek(e); });
+  plot.addEventListener("pointerup", () => { dragging = false; });
+  plot.addEventListener("pointercancel", () => { dragging = false; });
+
+  document.querySelectorAll(".chapters button").forEach((b) => b.addEventListener("click", () => choose(b.dataset.sc, SCENARIO[b.dataset.sc].def, false)));
+  $("#play").addEventListener("click", toggle);
+  $("#scrub").addEventListener("input", (e) => { S.playing = false; S.tc = +e.target.value; render(); });
+  new ResizeObserver(drawAll).observe($("#c-stock"));
+  window.addEventListener("hashchange", fromHash);
+
+  function fromHash() {
+    const m = location.hash.match(/^#(normal|slow|load)-(\w+)$/);
+    if (m && D[m[1]].runs[m[2]]) { choose(m[1], m[2], false); return true; }
+    return false;
+  }
+
+  /*
+  ---------- Tooltip Detail pengujian ----------
+  Muncul saat hover, fokus keyboard, atau ketuk di layar sentuh.
+  */
+  const tip = document.createElement("div");
+  tip.id = "tip"; tip.setAttribute("role", "tooltip"); tip.hidden = true;
+  document.body.append(tip);
+  let tipFor = null;
+  function showTip(el) {
+    if (tipFor && tipFor !== el) tipFor.classList.remove("open");
+    tipFor = el; el.classList.add("open");
+    tip.textContent = el.dataset.tip; tip.hidden = false;
+    el.setAttribute("aria-describedby", "tip");
+    const r = el.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+    const left = Math.min(Math.max(12, r.left), innerWidth - tw - 12);
+    const below = r.bottom + 8, above = r.top - th - 8;
+    const top = below + th > innerHeight - 8 && above > 8 ? above : below;
+    tip.style.left = `${left + scrollX}px`; tip.style.top = `${top + scrollY}px`;
+  }
+  function hideTip() {
+    if (!tipFor) return;
+    tipFor.classList.remove("open"); tipFor.removeAttribute("aria-describedby");
+    tipFor = null; tip.hidden = true;
+  }
+  document.querySelectorAll("dd.tip").forEach((el) => {
+    el.addEventListener("mouseenter", () => showTip(el));
+    el.addEventListener("mouseleave", hideTip);
+    el.addEventListener("focus", () => showTip(el));
+    el.addEventListener("blur", hideTip);
+    el.addEventListener("pointerup", (e) => {
+      if (e.pointerType !== "touch") return;
+      tipFor === el ? hideTip() : showTip(el);
+    });
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideTip(); });
+  document.addEventListener("pointerdown", (e) => { if (tipFor && !(e.target instanceof Element && e.target.closest("dd.tip"))) hideTip(); });
+  addEventListener("scroll", () => { if (tipFor) showTip(tipFor); }, { passive: true });
+  addEventListener("resize", hideTip);
+
+  $("#repo-link").href = D.repo;
+  $("#foot-links").innerHTML =
+    `<span>Kode: commit <a href="${D.repo}/tree/${D.commit}" rel="noopener">${D.commit}</a></span>` +
+    `<span>Raw data: <a href="${D.repo}/tree/main/results-published" rel="noopener">results-published</a></span>` +
+    `<span>Reproduce: <a href="${D.repo}#mencoba-sendiri" rel="noopener">README</a></span>`;
+  if (!fromHash()) choose("normal", "naive", false);
+  document.fonts && document.fonts.ready.then(drawAll);
+})();
+</script>
+</body>
+</html>

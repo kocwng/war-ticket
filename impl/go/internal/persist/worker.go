@@ -1,9 +1,11 @@
-// Package persist memindahkan tiket dari stream Redis ke Postgres.
-//
-// Setiap pesan dijamin diproses minimal sekali. Pesan baru di-ACK setelah
-// tiketnya tersimpan, dan insert-nya pakai ON CONFLICT sehingga aman diulang.
-// Kalau worker mati di tengah jalan, waktu hidup lagi dia membaca dulu pesan
-// pending miliknya sebelum lanjut ke pesan baru.
+/*
+Package persist memindahkan tiket dari stream Redis ke Postgres.
+
+Jaminannya at-least-once delivery. Message baru di-ACK setelah tiketnya
+tersimpan, dan insert-nya pakai ON CONFLICT sehingga idempotent. Kalau
+worker crash di tengah jalan, waktu restart dia membaca dulu pending
+message miliknya sebelum lanjut ke message baru.
+*/
 package persist
 
 import (
@@ -39,7 +41,7 @@ func New(rdb *redis.Client, saver Saver, log *slog.Logger) *Worker {
 
 func (w *Worker) Run(ctx context.Context) {
 	w.ensureGroup(ctx)
-	lastID := "0" // mulai dari pesan pending milik consumer ini
+	lastID := "0" // mulai dari pending message milik consumer ini
 	backoff := 100 * time.Millisecond
 
 	for ctx.Err() == nil {
@@ -69,7 +71,7 @@ func (w *Worker) Run(ctx context.Context) {
 
 		msgs := streams[0].Messages
 		if len(msgs) == 0 {
-			lastID = ">" // pending sudah habis, lanjut ke pesan baru
+			lastID = ">" // pending sudah habis, lanjut ke message baru
 			continue
 		}
 
@@ -80,7 +82,7 @@ func (w *Worker) Run(ctx context.Context) {
 			if t, ok := parse(m.Values); ok {
 				tickets = append(tickets, t)
 			} else {
-				w.log.Error("persist: pesan rusak, dilewati", "id", m.ID)
+				w.log.Error("persist: message rusak, di-skip", "id", m.ID)
 			}
 		}
 
@@ -90,7 +92,7 @@ func (w *Worker) Run(ctx context.Context) {
 				sleep(ctx, backoff)
 				backoff = min(backoff*2, 5*time.Second)
 			}
-			lastID = "0" // baca ulang pesan pending yang sama
+			lastID = "0" // baca ulang pending message yang sama
 			continue
 		}
 		backoff = 100 * time.Millisecond

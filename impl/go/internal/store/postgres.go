@@ -1,5 +1,7 @@
-// Package store berisi semua query ke Postgres, yaitu strategi naive,
-// strategi forupdate, dan penyimpanan batch dari worker persist.
+/*
+Package store berisi semua query ke Postgres, yaitu strategi naive,
+strategi forupdate, dan penyimpanan batch dari worker persist.
+*/
 package store
 
 import (
@@ -30,9 +32,11 @@ func (s *Store) GetEvent(ctx context.Context, id int64) (tiket.Event, error) {
 	return e, err
 }
 
-// PurchaseNaive mengecek stok lalu menguranginya di query terpisah, tanpa
-// transaksi. Pola ini sering lolos ke production, dan di sini sengaja dipakai
-// sebagai pembanding.
+/*
+PurchaseNaive mengecek stok lalu menguranginya di query terpisah, tanpa
+transaksi. Pola ini sering lolos ke production, dan di sini sengaja dipakai
+sebagai pembanding.
+*/
 func (s *Store) PurchaseNaive(ctx context.Context, eventID int64, userID string) (tiket.PurchaseResult, error) {
 	if t, ok, err := s.existingTicket(ctx, eventID, userID); err != nil || ok {
 		return tiket.PurchaseResult{Ticket: t, Replayed: ok}, err
@@ -50,8 +54,10 @@ func (s *Store) PurchaseNaive(ctx context.Context, eventID int64, userID string)
 		return tiket.PurchaseResult{}, tiket.ErrSoldOut
 	}
 
-	// Di sini celahnya. Selama UPDATE di bawah belum jalan, ratusan request lain
-	// bisa ikut lolos cek "stock > 0" di atas.
+	/*
+		Di sini celahnya. Selama UPDATE di bawah belum jalan, ratusan request lain
+		bisa ikut lolos cek "stock > 0" di atas.
+	*/
 	if _, err := s.pool.Exec(ctx,
 		`UPDATE events SET stock = stock - 1, updated_at = now() WHERE id = $1`, eventID); err != nil {
 		return tiket.PurchaseResult{}, err
@@ -63,15 +69,19 @@ func (s *Store) PurchaseNaive(ctx context.Context, eventID int64, userID string)
 		return tiket.PurchaseResult{}, err
 	}
 	if tag.RowsAffected() == 0 {
-		// User yang sama ternyata sudah dapat tiket lewat request lain yang jalan
-		// barengan. Stoknya terlanjur berkurang, ini kelemahan lain versi naive.
+		/*
+			User yang sama ternyata sudah dapat tiket lewat request lain yang jalan
+			barengan. Stoknya terlanjur berkurang, ini kelemahan lain versi naive.
+		*/
 		return s.replay(ctx, eventID, userID)
 	}
 	return tiket.PurchaseResult{Ticket: t}, nil
 }
 
-// PurchaseForUpdate mengunci baris stok selama transaksi. Hasilnya selalu
-// benar, tapi semua pembeli jadi antre di kunci yang sama.
+/*
+PurchaseForUpdate me-lock baris stok selama transaction. Hasilnya selalu
+benar, tapi semua request jadi menunggu lock yang sama.
+*/
 func (s *Store) PurchaseForUpdate(ctx context.Context, eventID int64, userID string) (tiket.PurchaseResult, error) {
 	if t, ok, err := s.existingTicket(ctx, eventID, userID); err != nil || ok {
 		return tiket.PurchaseResult{Ticket: t, Replayed: ok}, err
@@ -114,10 +124,12 @@ func (s *Store) PurchaseForUpdate(ctx context.Context, eventID int64, userID str
 	return tiket.PurchaseResult{Ticket: t}, nil
 }
 
-// PersistTickets menyimpan tiket dari jalur Redis dalam satu statement. Tiket
-// di-insert dengan ON CONFLICT, lalu stok dikurangi sebanyak tiket yang
-// benar-benar masuk. Jadi kalau pesan yang sama diproses dua kali, hasilnya
-// tetap benar.
+/*
+PersistTickets menyimpan tiket dari strategi Redis dalam satu statement.
+Tiket di-insert dengan ON CONFLICT, lalu stok di-decrement sebanyak tiket
+yang benar-benar masuk. Jadi kalau message yang sama diproses dua kali,
+hasilnya tetap benar (idempotent).
+*/
 func (s *Store) PersistTickets(ctx context.Context, ts []tiket.Ticket) error {
 	if len(ts) == 0 {
 		return nil

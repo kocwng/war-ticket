@@ -1,9 +1,11 @@
-// Package stats menghitung hasil setiap request beli dan merekam timeline
-// tiap 10 ms. Timeline ini yang nanti diputar ulang di halaman demo.
-//
-// Semua penghitung ada di memori proses, jadi angkanya hanya mewakili satu
-// instance. Itu cukup, karena benchmark memang menjalankan satu instance
-// per implementasi.
+/*
+Package stats menghitung hasil setiap request beli dan merekam timeline
+tiap 10 ms. Timeline ini yang nanti di-replay di halaman demo.
+
+Semua counter disimpan in-memory per process, jadi angkanya hanya mewakili
+satu instance. Itu cukup, karena benchmark memang menjalankan satu instance
+per implementasi.
+*/
 package stats
 
 import (
@@ -43,7 +45,7 @@ var (
 	})
 	waitingGauge = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "wartiket_queue_waiting",
-		Help: "Pembeli di ruang tunggu (instance ini).",
+		Help: "Queue length waiting room (instance ini).",
 	})
 )
 
@@ -79,7 +81,7 @@ func NewRecorder() *Recorder {
 	return r
 }
 
-// Reset mengosongkan semua penghitung dan menyiapkan rekaman timeline baru.
+// Reset mengosongkan semua counter dan memulai recording timeline baru.
 func (r *Recorder) Reset(strategy string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -135,8 +137,10 @@ func (r *Recorder) Outcomes() map[string]int64 {
 
 func (r *Recorder) waiting() int64 { return max(0, r.enqueued.Load()-r.admitted.Load()) }
 
-// Run mengambil sampel tiap 10 ms. Rekaman baru mulai saat ada aktivitas
-// pertama setelah reset, dan berhenti sendiri kalau 2 detik tidak ada apa-apa.
+/*
+Run mengambil sample tiap 10 ms. Recording baru mulai saat ada aktivitas
+pertama setelah reset, dan berhenti sendiri setelah idle 2 detik.
+*/
 func (r *Recorder) Run(ctx context.Context) {
 	tk := time.NewTicker(SampleInterval)
 	defer tk.Stop()

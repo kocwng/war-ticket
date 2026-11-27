@@ -1,4 +1,4 @@
-// Package httpapi berisi handler HTTP sesuai kontrak di api/openapi.yaml.
+// Package httpapi berisi HTTP handler sesuai API contract di api/openapi.yaml.
 package httpapi
 
 import (
@@ -92,8 +92,10 @@ func (s *Server) getEvent(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) purchase(w http.ResponseWriter, r *http.Request) {
-	// Kalau server sudah penuh, tolak saja dengan 503. Lebih baik sebagian
-	// pembeli ditolak cepat daripada semuanya melambat bareng.
+	/*
+		Kalau server sudah penuh, tolak saja dengan 503. Lebih baik sebagian
+		pembeli ditolak cepat daripada semuanya melambat bareng.
+	*/
 	if s.sem != nil {
 		select {
 		case s.sem <- struct{}{}:
@@ -165,7 +167,7 @@ func (s *Server) purchase(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusNotFound, "not_found", "event tidak ditemukan")
 	case errors.Is(err, context.DeadlineExceeded) || ctx.Err() != nil:
 		s.rec.Add(stats.Timeout)
-		writeError(w, http.StatusGatewayTimeout, "timeout", "request melewati batas waktu "+s.cfg.RequestTimeout.String())
+		writeError(w, http.StatusGatewayTimeout, "timeout", "request timeout setelah "+s.cfg.RequestTimeout.String())
 	default:
 		s.rec.Add(stats.Error)
 		s.log.Error("purchase gagal", "strategy", st, "err", err)
@@ -310,7 +312,7 @@ func (s *Server) fail(w http.ResponseWriter, err error) {
 	case errors.Is(err, tiket.ErrEventNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "event tidak ditemukan")
 	case errors.Is(err, tiket.ErrQueueNotFound):
-		writeError(w, http.StatusNotFound, "not_found", "antrean tidak ditemukan atau sudah kedaluwarsa")
+		writeError(w, http.StatusNotFound, "not_found", "queue entry tidak ditemukan atau sudah expired")
 	default:
 		s.log.Error("request gagal", "err", err)
 		writeError(w, http.StatusInternalServerError, "internal", "terjadi kesalahan di server")

@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Menjalankan keempat strategi satu per satu dengan beban yang sama, lalu
-# mencetak tabel perbandingan dalam Markdown.
-#
-#   ./bench/compare.sh [buyers=5000] [stock=500]
-#
-# Env opsional:
-#   STRATEGIES  daftar strategi (default "naive forupdate redis queue")
-#   COOLDOWN    jeda antar-run dalam detik (default 5)
-#   + semua env run.sh (APP_PORT, VUS, EVENT_ID, ADMIN_TOKEN, ...)
-#
-# Tabelnya juga disimpan ke results/compare-<timestamp>.md
+: <<'CATATAN'
+Menjalankan keempat strategi satu per satu dengan load yang sama, lalu
+mencetak tabel perbandingan dalam Markdown.
+
+  ./bench/compare.sh [buyers=5000] [stock=500]
+
+Env opsional:
+  STRATEGIES  daftar strategi (default "naive forupdate redis queue")
+  COOLDOWN    jeda antar-run dalam detik (default 5)
+  + semua env run.sh (APP_PORT, VUS, EVENT_ID, ADMIN_TOKEN, ...)
+
+Tabelnya juga disimpan ke results/compare-<timestamp>.md
+CATATAN
 set -euo pipefail
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
@@ -37,8 +39,10 @@ for s in $STRATEGIES; do
   dirs+=("results/${run_dir}")
 done
 
-# Bikin satu baris tabel dari satu folder run. Kolom "Antre p99" cuma terisi
-# untuk queue karena strategi lain tidak punya antrean.
+: <<'CATATAN'
+Bikin satu baris tabel dari satu folder run. Kolom "Queue p99" cuma terisi
+untuk strategi queue karena strategi lain tidak punya queue.
+CATATAN
 row() {
   local dir="$1"
   local k6json='{}'
@@ -67,7 +71,7 @@ row() {
   echo
   echo "${BUYERS} pembeli, stok ${STOCK}, $(date '+%Y-%m-%d %H:%M')"
   echo
-  echo "| Strategi | Terjual | Oversold | Konsisten | 503 | 504 | p50 | p99 | Antre p99 |"
+  echo "| Strategi | Terjual | Oversold | Consistent | 503 | 504 | p50 | p99 | Queue p99 |"
   echo "|---|---:|---:|:---:|---:|---:|---:|---:|---:|"
   for d in "${dirs[@]}"; do row "$d"; done
   echo

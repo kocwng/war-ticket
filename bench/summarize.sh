@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Ringkas satu folder seri jadi tabel median.
-#
-# Cara pakai: ./bench/summarize.sh results/series-<waktu>-<label>
-#
-# Angka di tabel adalah median dari semua putaran. Kalau angkanya beda-beda
-# antarputaran, rentang min–maks ditulis di dalam kurung.
+: <<'CATATAN'
+Ringkas satu folder seri jadi tabel median.
+
+Cara pakai: ./bench/summarize.sh results/series-<waktu>-<label>
+
+Angka di tabel adalah median dari semua run. Kalau angkanya beda-beda
+antar-run, range min–max ditulis di dalam kurung.
+CATATAN
 set -euo pipefail
 
 DIR="${1:?Kasih folder seri, misalnya results/series-20261127-101500-baseline}"
@@ -47,9 +49,9 @@ echo "$rows" | jq -rs '
 
   . as $all
   | ($all[0]) as $h
-  | "\($all | map(.strategy) | unique | length) strategi, \(($all | length) / ($all | map(.strategy) | unique | length) | floor) putaran masing-masing. \($h.buyers | num) pembeli, stok \($h.stock | num), \($h.cpu), commit \($h.commit)\(if $h.chaos then ", DB dilambatkan lewat Toxiproxy" else "" end).",
+  | "\($all | map(.strategy) | unique | length) strategi, \(($all | length) / ($all | map(.strategy) | unique | length) | floor) run masing-masing. \($h.buyers | num) pembeli, stok \($h.stock | num), \($h.cpu), commit \($h.commit)\(if $h.chaos then ", DB dilambatkan lewat Toxiproxy" else "" end).",
     "",
-    "| Strategi | Tiket terbit | Oversold | Konsisten | 503 | 504 | p50 | p99 | Antre p99 |",
+    "| Strategi | Tiket terbit | Oversold | Consistent | 503 | 504 | p50 | p99 | Queue p99 |",
     "|---|---:|---:|:---:|---:|---:|---:|---:|---:|",
     ( ["naive", "forupdate", "redis", "queue"][] as $s
       | [$all[] | select(.strategy == $s)] | select(length > 0)

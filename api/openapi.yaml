@@ -3,7 +3,7 @@ info:
   title: War Tiket API
   version: 1.0.0
   description: |
-    Kontrak ini dipakai bersama oleh semua implementasi, baik Go, Python, maupun Rust.
+    API contract ini dipakai bersama oleh semua implementasi, baik Go, Python, maupun Rust.
     Sebelum boleh di-benchmark, setiap implementasi harus lulus `bench/k6/smoke.js`.
 
     Ada tiga aturan yang harus dipegang. Satu user cuma boleh punya satu tiket per event.
@@ -81,7 +81,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Ticket" }
         "202":
-          description: Khusus strategi `queue`. Pembeli masuk ruang tunggu dulu, statusnya bisa dicek lewat `poll_url`.
+          description: Khusus strategi `queue`. Pembeli masuk waiting room dulu, statusnya bisa di-poll lewat `poll_url`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/QueueEntry" }
@@ -98,7 +98,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "504":
-          description: Request melewati batas waktu, misalnya karena terlalu lama menunggu lock (`error = timeout`).
+          description: Request timeout, misalnya karena terlalu lama menunggu lock (`error = timeout`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -114,7 +114,7 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: Status antrean.
+          description: Status queue entry.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/QueueEntry" }
@@ -166,7 +166,7 @@ components:
 
   responses:
     Error:
-      description: Error berisi kode singkat yang gampang dicek program, plus pesan untuk manusia.
+      description: Error berisi error code yang gampang dicek program, plus message untuk manusia.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -234,7 +234,7 @@ components:
           description: max(0, tiket terbit - kapasitas).
         consistent:
           type: boolean
-          description: true kalau stok DB ditambah jumlah tiket DB sama dengan kapasitas, dan tidak ada pesanan yang masih tertahan.
+          description: true kalau stok DB ditambah jumlah tiket DB sama dengan kapasitas, dan persist lag-nya nol.
         db:
           type: object
           properties:
@@ -244,10 +244,10 @@ components:
           type: object
           properties:
             stock: { type: [integer, "null"] }
-            persist_lag: { type: integer, description: Pesanan di stream yang belum masuk Postgres. }
+            persist_lag: { type: integer, description: Tiket di stream yang belum di-persist ke Postgres. }
         app:
           type: object
-          description: Hitungan dari dalam proses server.
+          description: Counter dari dalam process server.
           properties:
             sold: { type: integer }
             outcomes:

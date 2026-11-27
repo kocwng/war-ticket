@@ -1,19 +1,21 @@
-// War Tiket: simulasi flash sale.
-//
-// Sebanyak BUYERS pembeli unik menyerbu bersamaan. Satu pembeli punya satu
-// user_id dan mengirim satu request beli. Script ini tidak memanggil
-// /admin/reset karena stok dan strategi sudah disiapkan bench/run.sh.
-//
-// Env:
-//   BASE_URL  (default http://localhost:8088)
-//   STRATEGY  naive|forupdate|redis|queue, dipakai untuk tag dan alur antrean
-//   BUYERS    jumlah pembeli unik (default 5000)
-//   VUS       jumlah VU yang jalan paralel (default 1000)
-//   EVENT_ID  (default 1)
-//   RUN_DIR   nama folder di /results untuk menyimpan k6-summary.json
-//
-// Sengaja tidak ada threshold yang bisa menggagalkan run. Hasil strategi naive
-// memang diharapkan jelek, tapi tetap perlu direkam.
+/*
+War Tiket: simulasi flash sale.
+
+Sebanyak BUYERS pembeli unik menyerbu bersamaan. Satu pembeli punya satu
+user_id dan mengirim satu request beli. Script ini tidak memanggil
+/admin/reset karena stok dan strategi sudah disiapkan bench/run.sh.
+
+Env:
+  BASE_URL  (default http://localhost:8088)
+  STRATEGY  naive|forupdate|redis|queue, dipakai untuk tag dan flow queue
+  BUYERS    jumlah pembeli unik (default 5000)
+  VUS       jumlah VU yang jalan paralel (default 1000)
+  EVENT_ID  (default 1)
+  RUN_DIR   nama folder di /results untuk menyimpan k6-summary.json
+
+Sengaja tidak ada threshold yang bisa menggagalkan run. Hasil strategi naive
+memang diharapkan jelek, tapi tetap perlu direkam.
+*/
 
 import http from 'k6/http';
 import exec from 'k6/execution';
@@ -32,7 +34,7 @@ const PURCHASE_TIMEOUT = '15s'; // lebih lama dari REQUEST_TIMEOUT server (2s), 
 const QUEUE_POLL_INTERVAL_S = 0.2;
 const QUEUE_MAX_WAIT_MS = 30000;
 
-// Satu counter per hasil akhir. Pembeli yang antre dihitung setelah antreannya selesai.
+// Satu counter per outcome akhir. Pembeli di queue dihitung setelah status final-nya keluar.
 const outcomes = {
   created: new Counter('outcome_created'),
   replayed: new Counter('outcome_replayed'),
@@ -43,12 +45,14 @@ const outcomes = {
 };
 const queueEntered = new Counter('queue_entered'); // berapa kali dapat 202
 
-// Lama POST beli saja, belum termasuk menunggu di antrean.
+// Durasi POST purchase saja, belum termasuk waktu di queue.
 const purchaseLatency = new Trend('purchase_latency', true);
-// Dari dapat 202 sampai antrean memberi jawaban final (confirmed atau sold_out).
+// Dari dapat 202 sampai queue memberi status final (confirmed atau sold_out).
 const queueWait = new Trend('queue_wait', true);
-// Dari klik beli sampai dapat hasil final. Di luar strategi queue, nilainya sama
-// dengan purchase_latency.
+/*
+Dari klik beli sampai dapat hasil final. Di luar strategi queue, nilainya sama
+dengan purchase_latency.
+*/
 const purchaseE2E = new Trend('purchase_e2e', true);
 
 export const options = {
@@ -58,13 +62,15 @@ export const options = {
       vus: VUS,
       iterations: BUYERS,
       maxDuration: '60s',
-      gracefulStop: '35s', // kasih waktu pembeli yang masih antre untuk menyelesaikan polling
+      gracefulStop: '35s', // kasih waktu pembeli yang masih di queue untuk menyelesaikan polling
     },
   },
   tags: { strategy: STRATEGY, event_id: String(EVENT_ID) },
   summaryTrendStats: ['avg', 'min', 'med', 'p(90)', 'p(95)', 'p(99)', 'max'],
-  // Threshold kosong tidak menilai apa-apa. Gunanya cuma supaya submetric per
-  // outcome ikut muncul di ringkasan.
+  /*
+  Threshold kosong tidak menilai apa-apa. Gunanya cuma supaya submetric per
+  outcome ikut muncul di summary.
+  */
   thresholds: {
     'purchase_latency{outcome:created}': [],
     'purchase_latency{outcome:replayed}': [],
@@ -111,7 +117,7 @@ function absoluteUrl(pathOrUrl) {
   return BASE_URL + (pathOrUrl.startsWith('/') ? '' : '/') + pathOrUrl;
 }
 
-// Polling antrean sampai confirmed atau sold_out, lalu kembalikan outcome finalnya.
+// Polling queue sampai confirmed atau sold_out, lalu kembalikan outcome finalnya.
 function waitInQueue(entry) {
   const pollUrl = absoluteUrl(entry.poll_url || `/v1/queue/${entry.queue_id}`);
   const start = Date.now();
@@ -132,7 +138,7 @@ function waitInQueue(entry) {
 
   const waited = Date.now() - start;
   queueWait.add(waited, { outcome: final });
-  check(null, { 'antrean: selesai sebelum 30 detik': () => final !== 'timeout' }, { phase: 'queue' });
+  check(null, { 'queue: selesai sebelum timeout 30 detik': () => final !== 'timeout' }, { phase: 'queue' });
   return { outcome: final, waited };
 }
 
@@ -151,7 +157,7 @@ export default function () {
   purchaseLatency.add(postMs, { outcome });
 
   check(res, {
-    'beli: status sesuai kontrak (200/201/202/409/503/504)': (r) =>
+    'beli: status code sesuai API contract (200/201/202/409/503/504)': (r) =>
       [200, 201, 202, 409, 503, 504].includes(r.status),
     'beli: tidak ada 5xx': (r) => r.status < 500,
   });

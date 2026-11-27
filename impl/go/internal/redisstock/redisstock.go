@@ -1,7 +1,9 @@
-// Package redisstock menyimpan stok di Redis dan menguranginya lewat skrip
-// Lua, jadi cek stok dan pengurangannya terjadi dalam satu langkah atomik.
-// Setiap tiket yang terbit dicatat ke stream "orders", lalu worker di
-// package persist yang menyimpannya ke Postgres.
+/*
+Package redisstock menyimpan stok di Redis dan men-decrement-nya lewat Lua
+script, jadi check dan decrement stok terjadi dalam satu operasi atomic.
+Setiap tiket yang terbit ditulis ke stream "orders", lalu worker di
+package persist yang persist ke Postgres.
+*/
 package redisstock
 
 import (
@@ -19,12 +21,14 @@ const (
 	PersistGroup = "persist"
 )
 
-// Stream "orders" sengaja tidak pakai hash tag event, jadi skrip ini menyentuh
-// key di slot yang berbeda. Di Redis single node tidak masalah. Kalau nanti
-// pindah ke Redis Cluster, stream-nya perlu dipecah per event, misalnya
-// "ev:{id}:orders".
+/*
+Stream "orders" sengaja tidak pakai hash tag event, jadi script ini menyentuh
+key di slot yang berbeda. Di Redis single node tidak masalah. Kalau nanti
+pindah ke Redis Cluster, stream-nya perlu dipecah per event, misalnya
+"ev:{id}:orders".
+*/
 var reserveScript = redis.NewScript(`
--- KEYS[1] stok, KEYS[2] hash pembeli, KEYS[3] stream pesanan
+-- KEYS[1] stok, KEYS[2] hash buyers, KEYS[3] stream orders
 -- ARGV[1] event_id, ARGV[2] user_id, ARGV[3] ticket_id baru, ARGV[4] strategi
 if redis.call('EXISTS', KEYS[1]) == 0 then
   return {-1, ''}                          -- event tidak ada
@@ -75,11 +79,13 @@ func (s *Store) Reserve(ctx context.Context, eventID int64, userID string, st ti
 	case 2:
 		return tiket.PurchaseResult{Ticket: t}, nil
 	}
-	return tiket.PurchaseResult{}, fmt.Errorf("kode skrip reserve tidak dikenal: %v", res[0])
+	return tiket.PurchaseResult{}, fmt.Errorf("return code reserve script tidak dikenal: %v", res[0])
 }
 
-// ExistingTicket dipakai waiting room supaya user yang sudah punya tiket
-// tidak perlu antre lagi.
+/*
+ExistingTicket dipakai waiting room supaya user yang sudah punya tiket
+tidak perlu masuk queue lagi.
+*/
 func (s *Store) ExistingTicket(ctx context.Context, eventID int64, userID string) (string, bool, error) {
 	id, err := s.rdb.HGet(ctx, BuyersKey(eventID), userID).Result()
 	if errors.Is(err, redis.Nil) {
@@ -88,8 +94,10 @@ func (s *Store) ExistingTicket(ctx context.Context, eventID int64, userID string
 	return id, err == nil, err
 }
 
-// Stock mengembalikan stok di Redis. ok bernilai false kalau event ini belum
-// pernah di-reset.
+/*
+Stock mengembalikan stok di Redis. ok bernilai false kalau event ini belum
+pernah di-reset.
+*/
 func (s *Store) Stock(ctx context.Context, eventID int64) (int, bool, error) {
 	n, err := s.rdb.Get(ctx, StockKey(eventID)).Int()
 	if errors.Is(err, redis.Nil) {
@@ -98,8 +106,10 @@ func (s *Store) Stock(ctx context.Context, eventID int64) (int, bool, error) {
 	return n, err == nil, err
 }
 
-// PersistLag menghitung pesanan yang belum tersimpan ke Postgres, yaitu pesan
-// yang belum dibaca worker ditambah yang sudah dibaca tapi belum di-ACK.
+/*
+PersistLag menghitung tiket yang belum di-persist ke Postgres, yaitu
+message yang belum dibaca worker ditambah pending message yang belum di-ACK.
+*/
 func (s *Store) PersistLag(ctx context.Context) (int64, error) {
 	groups, err := s.rdb.XInfoGroups(ctx, OrdersStream).Result()
 	if err != nil {

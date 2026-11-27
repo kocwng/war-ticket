@@ -1,18 +1,20 @@
-// War Tiket: uji kontrak API.
-//
-// Tidak terikat bahasa. Implementasi apa pun (Go, Python, Rust) harus lulus ini
-// dulu sebelum di-benchmark. Jalannya cuma satu VU dan satu iterasi, dan exit
-// code-nya langsung bukan 0 kalau ada satu cek saja yang gagal.
-//
-// Env:
-//   BASE_URL     (default http://localhost:8088)
-//   STRATEGY     naive|forupdate|redis|queue (default redis)
-//   EVENT_ID     (default 1)
-//   ADMIN_TOKEN  opsional, dikirim sebagai header X-Admin-Token ke /admin
-//
-// Contoh:
-//   docker compose --profile bench run --rm -e STRATEGY=queue k6 run /bench/k6/smoke.js
-//   k6 run -e BASE_URL=http://localhost:8088 -e STRATEGY=forupdate bench/k6/smoke.js
+/*
+War Tiket: contract test API.
+
+Tidak terikat bahasa. Implementasi apa pun (Go, Python, Rust) harus lulus ini
+dulu sebelum di-benchmark. Jalannya cuma satu VU dan satu iterasi, dan exit
+code-nya langsung bukan 0 kalau ada satu cek saja yang gagal.
+
+Env:
+  BASE_URL     (default http://localhost:8088)
+  STRATEGY     naive|forupdate|redis|queue (default redis)
+  EVENT_ID     (default 1)
+  ADMIN_TOKEN  opsional, dikirim sebagai header X-Admin-Token ke /admin
+
+Contoh:
+  docker compose --profile bench run --rm -e STRATEGY=queue k6 run /bench/k6/smoke.js
+  k6 run -e BASE_URL=http://localhost:8088 -e STRATEGY=forupdate bench/k6/smoke.js
+*/
 
 import http from 'k6/http';
 import { check, group, sleep, fail } from 'k6';
@@ -37,8 +39,10 @@ export const options = {
   },
 };
 
-// Semua status yang ada di kontrak ditandai expected supaya http_req_failed
-// tidak bikin bingung. Benar atau salahnya respons dinilai lewat check di bawah.
+/*
+Semua status code yang ada di API contract ditandai expected supaya http_req_failed
+tidak bikin bingung. Benar atau salahnya respons dinilai lewat check di bawah.
+*/
 http.setResponseCallback(http.expectedStatuses(200, 201, 202, 204, 400, 404, 409));
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -75,7 +79,7 @@ function postPurchase(eventId, payload) {
   });
 }
 
-// Polling antrean sampai confirmed atau sold_out, atau sampai waktunya habis.
+// Polling queue sampai confirmed atau sold_out, atau sampai timeout.
 function pollQueue(entry) {
   const url = absoluteUrl(entry.poll_url);
   const start = Date.now();
@@ -90,9 +94,11 @@ function pollQueue(entry) {
   return { status: 'poll_timeout', body: last };
 }
 
-// Beli, lalu ringkas hasilnya jadi satu nilai kind. Kalau dapat 202, antreannya
-// ditunggu dulu sampai selesai.
-// kind: created | replayed | sold_out | queued_confirmed | queued_sold_out | lainnya
+/*
+Beli, lalu ringkas hasilnya jadi satu nilai kind. Kalau dapat 202, queue-nya
+ditunggu dulu sampai selesai.
+kind: created | replayed | sold_out | queued_confirmed | queued_sold_out | lainnya
+*/
 function buy(userId) {
   const res = postPurchase(EVENT_ID, { user_id: userId });
   const body = parseJSON(res);
@@ -105,7 +111,7 @@ function buy(userId) {
     out.kind = body && body.error === 'sold_out' ? 'sold_out' : 'http_409_bad_body';
   } else if (res.status === 202) {
     const entryOk = check(body, {
-      'antrean: 202 ada queue_id, status, poll_url': (b) =>
+      'queue: 202 ada queue_id, status, poll_url': (b) =>
         !!b && typeof b.queue_id === 'string' && typeof b.status === 'string' && typeof b.poll_url === 'string',
     });
     if (!entryOk) {
@@ -241,8 +247,10 @@ export default function () {
   });
 
   group('report konsisten', () => {
-    // Di strategi berbasis Redis, pesanan baru masuk Postgres belakangan lewat
-    // stream. Tunggu persist_lag jadi 0 dulu supaya angka di report sudah final.
+    /*
+    Di strategi berbasis Redis, tiket baru di-persist ke Postgres belakangan lewat
+    stream. Tunggu persist_lag jadi 0 dulu supaya angka di report sudah final.
+    */
     const start = Date.now();
     let res;
     let report = null;
