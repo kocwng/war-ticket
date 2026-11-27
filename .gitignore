@@ -1,0 +1,7 @@
+results/*
+!results/.gitkeep
+# Hasil yang dipamerkan disalin ke results-published/ (ikut di-commit)
+
+.DS_Store
+.idea/
+.vscode/

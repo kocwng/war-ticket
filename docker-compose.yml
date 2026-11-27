@@ -1,0 +1,81 @@
+name: war-tiket
+
+# Infra ini dipakai bareng oleh semua implementasi. Yang dibatasi resource-nya
+# cuma container app (2 CPU, 512 MB), supaya perbandingan antarbahasa adil.
+#
+#   docker compose up -d --build           # infra + app Go
+#   ./bench/run.sh redis                   # satu run benchmark
+#   docker compose --profile obs up -d     # + Prometheus di :9090
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: tiket
+      POSTGRES_PASSWORD: tiket   # kredensial lokal untuk benchmark saja
+      POSTGRES_DB: tiket
+    command: ["postgres", "-c", "max_connections=200"]
+    volumes:
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    ports: ["55432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tiket -d tiket"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports: ["56379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+  # App tersambung ke Postgres lewat Toxiproxy, jadi database bisa sengaja
+  # dibikin lambat di tengah run (lihat bench/chaos.sh).
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.9.0
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./deploy/toxiproxy.json:/config/toxiproxy.json:ro
+    ports: ["8474:8474"]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  app-go:
+    build: ./impl/go
+    environment:
+      PORT: "8080"
+      DATABASE_URL: postgres://tiket:tiket@toxiproxy:5433/tiket?sslmode=disable
+      REDIS_ADDR: redis:6379
+      DB_MAX_CONNS: "20"
+      REQUEST_TIMEOUT: 2s
+      MAX_INFLIGHT: "1000"
+      QUEUE_WORKERS: "64"
+    ports: ["8088:8080"]
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 512M }
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      toxiproxy: { condition: service_started }
+
+  k6:
+    image: grafana/k6:0.54.0
+    profiles: ["bench"]
+    environment:
+      BASE_URL: http://app-go:8080
+    volumes:
+      - ./bench:/bench:ro
+      - ./results:/results
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["obs"]
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]

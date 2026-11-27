@@ -1,0 +1,269 @@
+openapi: 3.1.0
+info:
+  title: War Tiket API
+  version: 1.0.0
+  description: |
+    Kontrak ini dipakai bersama oleh semua implementasi, baik Go, Python, maupun Rust.
+    Sebelum boleh di-benchmark, setiap implementasi harus lulus `bench/k6/smoke.js`.
+
+    Ada tiga aturan yang harus dipegang. Satu user cuma boleh punya satu tiket per event.
+    Kalau user yang sudah punya tiket menekan Beli lagi, dia dapat tiket yang sama (200),
+    bukan tiket baru. Stok juga tidak boleh oversold, kecuali di strategi `naive` yang
+    memang sengaja dibuat bocor sebagai pembanding.
+
+    Strategi yang aktif dipilih lewat `POST /admin/reset` dan berlaku untuk semua request
+    beli sesudahnya.
+servers:
+  - url: http://localhost:8088
+tags:
+  - name: public
+  - name: admin
+    description: Khusus untuk benchmark di lokal. Kalau env `ADMIN_TOKEN` diisi, sertakan header `X-Admin-Token`.
+
+paths:
+  /healthz:
+    get:
+      tags: [public]
+      operationId: health
+      responses:
+        "200":
+          description: Server siap.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, const: ok }
+
+  /v1/events/{eventId}:
+    get:
+      tags: [public]
+      operationId: getEvent
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: Detail event dan sisa stoknya, dihitung sesuai strategi yang sedang aktif.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Event" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /v1/events/{eventId}/purchase:
+    post:
+      tags: [public]
+      operationId: purchase
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [user_id]
+              properties:
+                user_id:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                  example: u-10001
+      responses:
+        "201":
+          description: Tiket baru terbit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "200":
+          description: User ini sudah punya tiket, jadi tiket yang sama dikembalikan.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "202":
+          description: Khusus strategi `queue`. Pembeli masuk ruang tunggu dulu, statusnya bisa dicek lewat `poll_url`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueEntry" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Tiket habis (`error = sold_out`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Server sedang penuh dan menolak request ini (`error = overloaded`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "504":
+          description: Request melewati batas waktu, misalnya karena terlalu lama menunggu lock (`error = timeout`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /v1/queue/{queueId}:
+    get:
+      tags: [public]
+      operationId: getQueueEntry
+      parameters:
+        - name: queueId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Status antrean.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QueueEntry" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/reset:
+    post:
+      tags: [admin]
+      operationId: reset
+      description: Menghapus semua tiket event ini, mengatur ulang stok, memilih strategi, dan mulai merekam timeline baru.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event_id, stock, strategy]
+              properties:
+                event_id: { type: integer, example: 1 }
+                stock: { type: integer, minimum: 0, example: 500 }
+                strategy: { $ref: "#/components/schemas/Strategy" }
+      responses:
+        "204": { description: Siap untuk run baru. }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /admin/report:
+    get:
+      tags: [admin]
+      operationId: report
+      parameters:
+        - name: event_id
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Hasil run terakhir. Format inilah yang disimpan ke `results/` dan nanti diputar ulang di halaman demo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Report" }
+
+components:
+  parameters:
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    Error:
+      description: Error berisi kode singkat yang gampang dicek program, plus pesan untuk manusia.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Strategy:
+      type: string
+      enum: [naive, forupdate, redis, queue]
+
+    Event:
+      type: object
+      required: [id, name, capacity, stock, strategy]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        capacity: { type: integer }
+        stock: { type: integer, description: Bisa minus di strategi naive. }
+        strategy: { $ref: "#/components/schemas/Strategy" }
+
+    Ticket:
+      type: object
+      required: [ticket_id, event_id, user_id, strategy]
+      properties:
+        ticket_id: { type: string, format: uuid }
+        event_id: { type: integer }
+        user_id: { type: string }
+        strategy: { $ref: "#/components/schemas/Strategy" }
+
+    QueueEntry:
+      type: object
+      required: [queue_id, status, poll_url]
+      properties:
+        queue_id: { type: string }
+        status:
+          type: string
+          enum: [waiting, admitted, confirmed, sold_out]
+        position:
+          type: integer
+          description: Jumlah orang di depan pembeli ini. Cuma muncul saat statusnya `waiting`.
+        ticket_id:
+          type: string
+          format: uuid
+          description: Cuma muncul saat statusnya `confirmed`.
+        poll_url: { type: string, example: /v1/queue/7f3c... }
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          enum: [bad_request, not_found, sold_out, overloaded, timeout, internal, unauthorized]
+        message: { type: string }
+
+    Report:
+      type: object
+      required: [event_id, strategy, capacity, oversold, consistent, db, app, timeline]
+      properties:
+        event_id: { type: integer }
+        strategy: { $ref: "#/components/schemas/Strategy" }
+        implementation: { type: string, example: go }
+        capacity: { type: integer }
+        oversold:
+          type: integer
+          description: max(0, tiket terbit - kapasitas).
+        consistent:
+          type: boolean
+          description: true kalau stok DB ditambah jumlah tiket DB sama dengan kapasitas, dan tidak ada pesanan yang masih tertahan.
+        db:
+          type: object
+          properties:
+            stock: { type: integer }
+            tickets: { type: integer }
+        redis:
+          type: object
+          properties:
+            stock: { type: [integer, "null"] }
+            persist_lag: { type: integer, description: Pesanan di stream yang belum masuk Postgres. }
+        app:
+          type: object
+          description: Hitungan dari dalam proses server.
+          properties:
+            sold: { type: integer }
+            outcomes:
+              type: object
+              additionalProperties: { type: integer }
+              example: { created: 500, replayed: 0, sold_out: 4300, timeout: 0, overloaded: 200, queued: 0, error: 0 }
+        timeline:
+          type: object
+          properties:
+            interval_ms: { type: integer, example: 10 }
+            columns:
+              type: array
+              items: { type: string }
+              example: [t_ms, sold, inflight, waiting]
+            points:
+              type: array
+              items:
+                type: array
+                items: { type: integer }

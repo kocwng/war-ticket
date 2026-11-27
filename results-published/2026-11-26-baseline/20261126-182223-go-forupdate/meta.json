@@ -1,0 +1,22 @@
+{
+  "run_dir": "20261126-182223-go-forupdate",
+  "implementation": "go",
+  "strategy": "forupdate",
+  "buyers": 5000,
+  "stock": 500,
+  "vus": 1000,
+  "event_id": 1,
+  "git_commit": "uncommitted",
+  "host": {
+    "os": "Darwin arm64",
+    "cpus": 8,
+    "cpu_model": "Apple M2"
+  },
+  "chaos": {
+    "postgres_toxics": [],
+    "enabled": false
+  },
+  "k6_exit_code": 0,
+  "persist_lag_final": 0,
+  "timestamp": "2026-11-26T11:22:27Z"
+}
