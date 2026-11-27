@@ -1,8 +1,9 @@
-.PHONY: up down logs test test-integration smoke bench compare chaos-on chaos-off
+.PHONY: up down logs test test-integration smoke bench compare series chaos-on chaos-off
 
 STRATEGY ?= redis
 BUYERS   ?= 5000
 STOCK    ?= 500
+LABEL    ?= baseline
 
 up:                ## Nyalakan infra + app Go
 	docker compose up -d --build
@@ -30,6 +31,9 @@ bench:             ## Satu run: make bench STRATEGY=queue BUYERS=10000 STOCK=100
 
 compare:           ## Bandingkan keempat strategi dengan beban yang sama
 	./bench/compare.sh $(BUYERS) $(STOCK)
+
+series:            ## 5 putaran keempat strategi + tabel median: make series LABEL=baseline
+	./bench/series.sh $(LABEL) 5 $(BUYERS) $(STOCK)
 
 chaos-on:          ## Bikin Postgres lambat (+40ms ±10ms) lewat Toxiproxy
 	./bench/chaos.sh on 40 10

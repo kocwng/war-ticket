@@ -1,0 +1,33 @@
+{
+  "run_dir": "series-20261127-133920-db-lambat/r3-naive",
+  "implementation": "go",
+  "strategy": "naive",
+  "buyers": 5000,
+  "stock": 500,
+  "vus": 1000,
+  "event_id": 1,
+  "git_commit": "4fdb181-dirty",
+  "host": {
+    "os": "Darwin arm64",
+    "cpus": 8,
+    "cpu_model": "Apple M2"
+  },
+  "chaos": {
+    "postgres_toxics": [
+      {
+        "attributes": {
+          "latency": 40,
+          "jitter": 10
+        },
+        "name": "db_latency",
+        "type": "latency",
+        "stream": "downstream",
+        "toxicity": 1
+      }
+    ],
+    "enabled": true
+  },
+  "k6_exit_code": 0,
+  "persist_lag_final": 0,
+  "timestamp": "2026-11-27T06:41:21Z"
+}

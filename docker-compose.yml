@@ -1,4 +1,4 @@
-name: war-tiket
+name: war-ticket
 
 # Infra ini dipakai bareng oleh semua implementasi. Yang dibatasi resource-nya
 # cuma container app (2 CPU, 512 MB), supaya perbandingan antarbahasa adil.

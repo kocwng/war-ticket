@@ -1,0 +1,371 @@
+{
+  "options": {
+    "summaryTrendStats": [
+      "avg",
+      "min",
+      "med",
+      "p(90)",
+      "p(95)",
+      "p(99)",
+      "max"
+    ],
+    "summaryTimeUnit": "",
+    "noColor": false
+  },
+  "state": {
+    "isStdOutTTY": false,
+    "isStdErrTTY": false,
+    "testRunDurationMs": 315.098486
+  },
+  "metrics": {
+    "purchase_latency{outcome:created}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(99)": 43.632071419999995,
+        "max": 47.107709,
+        "avg": 18.233225335999997,
+        "min": 1.525667,
+        "med": 17.057812,
+        "p(90)": 27.8058122,
+        "p(95)": 34.506951449999995
+      }
+    },
+    "purchase_latency{outcome:sold_out}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 29.071954062222215,
+        "min": 0.956,
+        "med": 30.073208,
+        "p(90)": 38.6015212,
+        "p(95)": 42.799400299999995,
+        "p(99)": 50.55650908,
+        "max": 119.218542
+      }
+    },
+    "http_req_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 27.988081189599914,
+        "min": 0.956,
+        "med": 29.195187,
+        "p(90)": 38.1718128,
+        "p(95)": 42.15234554999999,
+        "p(99)": 49.56298683999999,
+        "max": 119.218542
+      }
+    },
+    "http_req_blocked": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 5.7058776599999685,
+        "min": 0.000541,
+        "med": 0.001792,
+        "p(90)": 34.35570420000001,
+        "p(95)": 48.068567,
+        "p(99)": 57.12049991,
+        "max": 100.228375
+      }
+    },
+    "purchase_latency{outcome:queued}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(99)": 0,
+        "max": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "p(90)": 0,
+        "p(95)": 0
+      }
+    },
+    "http_req_waiting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 39.40913095,
+        "p(99)": 47.439219249999994,
+        "max": 60.90975,
+        "avg": 27.11525068620005,
+        "min": 0.944417,
+        "med": 28.9161255,
+        "p(90)": 36.6616288
+      }
+    },
+    "http_req_connecting": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 1.4006014332000003,
+        "min": 0,
+        "med": 0,
+        "p(90)": 7.295561900000004,
+        "p(95)": 10.649695549999999,
+        "p(99)": 18.791451999999992,
+        "max": 29.69
+      }
+    },
+    "http_req_failed": {
+      "type": "rate",
+      "contains": "default",
+      "values": {
+        "rate": 0,
+        "passes": 0,
+        "fails": 5000
+      }
+    },
+    "checks": {
+      "contains": "default",
+      "values": {
+        "rate": 1,
+        "passes": 14500,
+        "fails": 0
+      },
+      "type": "rate"
+    },
+    "purchase_latency": {
+      "values": {
+        "max": 119.218542,
+        "avg": 27.98808118959993,
+        "min": 0.956,
+        "med": 29.195187,
+        "p(90)": 38.1718128,
+        "p(95)": 42.15234554999999,
+        "p(99)": 49.56298683999999
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "http_req_duration{expected_response:true}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0.956,
+        "med": 29.195187,
+        "p(90)": 38.1718128,
+        "p(95)": 42.15234554999999,
+        "p(99)": 49.56298683999999,
+        "max": 119.218542,
+        "avg": 27.988081189599914
+      }
+    },
+    "outcome_sold_out": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 4500,
+        "rate": 14281.249196481382
+      }
+    },
+    "http_req_duration{name:queue_poll}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "max": 0,
+        "avg": 0
+      }
+    },
+    "iteration_duration": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(99)": 137.96824199,
+        "max": 148.751834,
+        "avg": 52.09768012840007,
+        "min": 1.612708,
+        "med": 40.6391875,
+        "p(90)": 98.8574295,
+        "p(95)": 122.12664965
+      }
+    },
+    "purchase_latency{outcome:timeout}": {
+      "values": {
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "max": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0
+      },
+      "type": "trend",
+      "contains": "time"
+    },
+    "data_received": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 823908,
+        "rate": 2614763.4362165737
+      }
+    },
+    "data_sent": {
+      "type": "counter",
+      "contains": "data",
+      "values": {
+        "count": 848893,
+        "rate": 2694056.105366371
+      }
+    },
+    "http_req_receiving": {
+      "contains": "time",
+      "values": {
+        "avg": 0.06031300119999992,
+        "min": 0.0045,
+        "med": 0.0124165,
+        "p(90)": 0.09343690000000002,
+        "p(95)": 0.14826669999999992,
+        "p(99)": 0.3444436699999993,
+        "max": 32.744208
+      },
+      "type": "trend"
+    },
+    "purchase_e2e": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(95)": 42.15234554999999,
+        "p(99)": 49.56298683999999,
+        "max": 119.218542,
+        "avg": 27.988081189599995,
+        "min": 0.956,
+        "med": 29.195187,
+        "p(90)": 38.1718128
+      }
+    },
+    "outcome_created": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 500,
+        "rate": 1586.805466275709
+      }
+    },
+    "purchase_latency{outcome:overloaded}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "max": 0,
+        "avg": 0,
+        "min": 0,
+        "med": 0
+      }
+    },
+    "http_req_tls_handshaking": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "min": 0,
+        "med": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "max": 0,
+        "avg": 0
+      }
+    },
+    "purchase_latency{outcome:replayed}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "avg": 0,
+        "min": 0,
+        "med": 0,
+        "p(90)": 0,
+        "p(95)": 0,
+        "p(99)": 0,
+        "max": 0
+      }
+    },
+    "http_req_duration{name:purchase}": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "p(90)": 38.1718128,
+        "p(95)": 42.15234554999999,
+        "p(99)": 49.56298683999999,
+        "max": 119.218542,
+        "avg": 27.988081189599914,
+        "min": 0.956,
+        "med": 29.195187
+      }
+    },
+    "http_req_sending": {
+      "type": "trend",
+      "contains": "time",
+      "values": {
+        "med": 0.0059165,
+        "p(90)": 1.8773583000000014,
+        "p(95)": 6.088187199999998,
+        "p(99)": 10.338427,
+        "max": 89.445375,
+        "avg": 0.8125175022000012,
+        "min": 0.001875
+      }
+    },
+    "iterations": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 5000,
+        "rate": 15868.054662757091
+      }
+    },
+    "http_reqs": {
+      "type": "counter",
+      "contains": "default",
+      "values": {
+        "count": 5000,
+        "rate": 15868.054662757091
+      }
+    }
+  },
+  "root_group": {
+    "checks": [
+      {
+        "name": "beli: status sesuai kontrak (200/201/202/409/503/504)",
+        "path": "::beli: status sesuai kontrak (200/201/202/409/503/504)",
+        "id": "15045834b2a63cfffdee608090035d07",
+        "passes": 5000,
+        "fails": 0
+      },
+      {
+        "path": "::beli: tidak ada 5xx",
+        "id": "443d6ab5c7e36491c57970fdf9280c61",
+        "passes": 5000,
+        "fails": 0,
+        "name": "beli: tidak ada 5xx"
+      },
+      {
+        "id": "b4e9f6dbbd4b514b78a5360721860e41",
+        "passes": 4500,
+        "fails": 0,
+        "name": "beli: 409 berisi error=sold_out",
+        "path": "::beli: 409 berisi error=sold_out"
+      }
+    ],
+    "name": "",
+    "path": "",
+    "id": "d41d8cd98f00b204e9800998ecf8427e",
+    "groups": []
+  },
+  "war_tiket": {
+    "strategy": "redis",
+    "buyers": 5000,
+    "vus": 1000,
+    "event_id": 1,
+    "base_url": "http://app-go:8080"
+  }
+}

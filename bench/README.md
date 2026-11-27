@@ -12,6 +12,10 @@ Di folder ini ada semua alat untuk menguji War Tiket: uji kontrak, load test, da
 
 `compare.sh` menjalankan `run.sh` untuk keempat strategi berturut-turut dengan beban yang sama, lalu mencetak tabel perbandingan dalam Markdown. Tabelnya juga disimpan ke `results/compare-<timestamp>.md`.
 
+`series.sh` dipakai untuk angka yang mau dipublikasikan. Dia menjalankan keempat strategi selang-seling selama beberapa putaran (default 5), didahului satu run pemanasan yang hasilnya dibuang. Semua run masuk ke satu folder `results/series-<waktu>-<label>/`.
+
+`summarize.sh` membaca folder seri tadi dan membuat tabel median. Kalau angkanya beda-beda antarputaran, rentang min–maks ikut ditulis di dalam kurung. `series.sh` memanggilnya otomatis di akhir dan menyimpan hasilnya ke `summary.md`.
+
 `chaos.sh` menyalakan atau mematikan latency tambahan ke Postgres lewat Toxiproxy.
 
 ## Cara pakai
@@ -29,6 +33,9 @@ docker compose --profile bench run --rm -e STRATEGY=redis k6 run /bench/k6/smoke
 ./bench/chaos.sh on 40 10                        # Postgres +40ms ±10ms
 ./bench/compare.sh
 ./bench/chaos.sh off
+
+./bench/series.sh baseline                       # 5 putaran, lalu tabel median
+./bench/summarize.sh results/series-<waktu>-baseline   # buat ulang tabelnya
 ```
 
 Ada beberapa env yang bisa diatur kalau perlu. `APP_PORT` defaultnya 8088, `VUS` defaultnya 1000, dan `EVENT_ID` defaultnya 1. Isi `ADMIN_TOKEN` kalau server mewajibkan header `X-Admin-Token`. Untuk `compare.sh` ada juga `STRATEGIES` dan `COOLDOWN`.
@@ -51,7 +58,7 @@ Bandingkan angka hanya dari mesin dan setelan Docker yang sama. Container app su
 
 Sebelum mulai, tutup aplikasi yang berat seperti browser dengan banyak tab atau IDE, dan colok charger kalau pakai laptop supaya CPU tidak diperlambat.
 
-Lakukan satu run pemanasan dulu, misalnya `./bench/run.sh redis 1000 100`, lalu hapus hasilnya. Setelah itu ulangi tiap strategi minimal lima kali dan laporkan mediannya, bukan hasil terbaik. Kalau angkanya naik-turun jauh, sebutkan juga rentangnya.
+Pakai `series.sh` kalau angkanya mau dipublikasikan. Skrip itu sudah mengurus pemanasan, mengulang tiap strategi lima kali, dan melaporkan median beserta rentangnya, jadi tidak ada yang tergoda memilih hasil terbaik.
 
 Ubah satu hal saja per percobaan, entah strateginya, chaos-nya, atau jumlah pembelinya. Cek `./bench/chaos.sh status` sebelum mulai supaya tidak lupa chaos masih menyala. Statusnya juga ikut tercatat di `meta.json`.
 

@@ -1,0 +1,22 @@
+{
+  "run_dir": "series-20261127-133644-baseline/r2-queue",
+  "implementation": "go",
+  "strategy": "queue",
+  "buyers": 5000,
+  "stock": 500,
+  "vus": 1000,
+  "event_id": 1,
+  "git_commit": "4fdb181-dirty",
+  "host": {
+    "os": "Darwin arm64",
+    "cpus": 8,
+    "cpu_model": "Apple M2"
+  },
+  "chaos": {
+    "postgres_toxics": [],
+    "enabled": false
+  },
+  "k6_exit_code": 0,
+  "persist_lag_final": 0,
+  "timestamp": "2026-11-27T06:37:43Z"
+}
